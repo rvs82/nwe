@@ -43,6 +43,12 @@
     <div id="recommendation"></div>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script>
+        // Проверка загрузки LightweightCharts
+        if (typeof LightweightCharts === 'undefined') {
+            document.body.innerHTML += '<p style="color: red;">Ошибка: LightweightCharts не загружен</p>';
+            throw new Error('LightweightCharts not loaded');
+        }
+
         const chart = LightweightCharts.createChart(document.getElementById('chartContainer'), {
             width: 1000,
             height: 600,
