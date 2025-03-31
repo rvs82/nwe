@@ -31,20 +31,11 @@
             data: {
                 datasets: [
                     {
-                        label: 'Wick High',
+                        label: 'Close Price',
                         data: [],
                         borderColor: '#ffffff',
                         borderWidth: 1,
-                        pointRadius: 0,
-                        showLine: false
-                    },
-                    {
-                        label: 'Wick Low',
-                        data: [],
-                        borderColor: '#ffffff',
-                        borderWidth: 1,
-                        pointRadius: 0,
-                        showLine: false
+                        fill: false
                     },
                     {
                         label: 'Upper Envelope',
@@ -64,11 +55,6 @@
             },
             options: {
                 responsive: true,
-                plugins: {
-                    annotation: {
-                        annotations: []
-                    }
-                },
                 scales: {
                     x: {
                         type: 'time',
@@ -127,28 +113,14 @@
 
                 console.log("Candles processed:", candles.length);
 
-                const wicksHigh = candles.map(c => ({ x: c.x, y: c.h }));
-                const wicksLow = candles.map(c => ({ x: c.x, y: c.l }));
+                const closeData = candles.map(c => ({ x: c.x, y: c.c }));
                 const { nwe, sae } = calculateNWE(closePrices);
                 const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
                 const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
 
-                const annotations = candles.map((c, i) => ({
-                    type: 'box',
-                    xMin: c.x - 300000,
-                    xMax: c.x + 300000,
-                    yMin: Math.min(c.o, c.c),
-                    yMax: Math.max(c.o, c.c),
-                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
-                    borderColor: '#ffffff',
-                    borderWidth: 1
-                }));
-
-                chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = wicksHigh;
-                chart.data.datasets[1].data = wicksLow;
-                chart.data.datasets[2].data = upper;
-                chart.data.datasets[3].data = lower;
+                chart.data.datasets[0].data = closeData;
+                chart.data.datasets[1].data = upper;
+                chart.data.datasets[2].data = lower;
                 chart.update();
                 console.log("Chart updated");
             } catch (error) {
@@ -157,7 +129,7 @@
         }
 
         fetchCandles();
-        setInterval(fetchCandles, 60000); // Обновление каждые 60 секунд
+        setInterval(fetchCandles, 60000);
     </script>
 </body>
 </html>
