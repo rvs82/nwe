@@ -31,11 +31,20 @@
             data: {
                 datasets: [
                     {
-                        label: 'Close Price',
+                        label: 'Wick High',
                         data: [],
                         borderColor: '#ffffff',
                         borderWidth: 1,
-                        fill: false
+                        pointRadius: 0,
+                        showLine: false
+                    },
+                    {
+                        label: 'Wick Low',
+                        data: [],
+                        borderColor: '#ffffff',
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        showLine: false
                     },
                     {
                         label: 'Upper Envelope',
@@ -55,6 +64,11 @@
             },
             options: {
                 responsive: true,
+                plugins: {
+                    annotation: {
+                        annotations: []
+                    }
+                },
                 scales: {
                     x: {
                         type: 'time',
@@ -113,14 +127,38 @@
 
                 console.log("Candles processed:", candles.length);
 
-                const closeData = candles.map(c => ({ x: c.x, y: c.c }));
+                const wicksHigh = [];
+                const wicksLow = [];
+                candles.forEach(c => {
+                    wicksHigh.push({ x: c.x, y: c.h });
+                    wicksHigh.push({ x: c.x, y: Math.max(c.o, c.c) });
+                    wicksHigh.push({ x: c.x, y: null });
+
+                    wicksLow.push({ x: c.x, y: Math.min(c.o, c.c) });
+                    wicksLow.push({ x: c.x, y: c.l });
+                    wicksLow.push({ x: c.x, y: null });
+                });
+
                 const { nwe, sae } = calculateNWE(closePrices);
                 const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
                 const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
 
-                chart.data.datasets[0].data = closeData;
-                chart.data.datasets[1].data = upper;
-                chart.data.datasets[2].data = lower;
+                const annotations = candles.map((c, i) => ({
+                    type: 'box',
+                    xMin: c.x.getTime() - 300000,
+                    xMax: c.x.getTime() + 300000,
+                    yMin: Math.min(c.o, c.c),
+                    yMax: Math.max(c.o, c.c),
+                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
+                    borderColor: '#ffffff',
+                    borderWidth: 1
+                }));
+
+                chart.options.plugins.annotation.annotations = annotations;
+                chart.data.datasets[0].data = wicksHigh;
+                chart.data.datasets[1].data = wicksLow;
+                chart.data.datasets[2].data = upper;
+                chart.data.datasets[3].data = lower;
                 chart.update();
                 console.log("Chart updated");
             } catch (error) {
