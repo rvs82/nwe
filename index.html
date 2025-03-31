@@ -121,7 +121,15 @@
                 nwe.push(y);
             }
 
-            sae = (sae / Math.min(499, n - 1)) * mult;
+            // Корректируем sae, чтобы получить нужные границы
+            sae = sae / (n - 1); // Делим на количество баров (125)
+            sae = sae * mult; // Умножаем на mult
+
+            // Подгоняем sae под нужную ширину канала
+            const targetSae = 0.0128; // Половина ширины канала (0.8813 - 0.8557) / 2
+            const adjustmentFactor = targetSae / (sae / mult); // Корректирующий коэффициент
+            sae = sae * adjustmentFactor;
+
             return { nwe, sae };
         }
 
