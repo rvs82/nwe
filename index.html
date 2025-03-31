@@ -3,19 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nadaraya-Watson Envelope - LDO/USDT 15m</title>
+    <title>LDO/USDT 15m - Nadaraya-Watson Envelope</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.1/dist/chartjs-chart-financial.min.js"></script>
     <style>
-        body {
-            background-color: #1e222d;
-            color: white;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-        }
-        canvas {
-            max-width: 100%;
-        }
+        body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        canvas { max-width: 100%; }
     </style>
 </head>
 <body>
@@ -23,36 +16,35 @@
     <canvas id="priceChart"></canvas>
 
     <script>
-        // Настройки индикатора
-        const h = 8; // Bandwidth
-        const mult = 3; // Multiplier
-        const repaint = true; // Repainting Smoothing
+        const h = 8;
+        const mult = 3;
+        const repaint = true;
+        const maxCandles = 126;
 
-        // Инициализация графика
         const ctx = document.getElementById('priceChart').getContext('2d');
         const chart = new Chart(ctx, {
-            type: 'line',
+            type: 'candlestick',
             data: {
-                labels: [],
                 datasets: [
                     {
-                        label: 'Close Price',
+                        label: 'LDO/USDT',
                         data: [],
                         borderColor: '#ffffff',
-                        borderWidth: 1,
-                        fill: false
+                        color: { up: '#00c4b4', down: '#ff1744' }
                     },
                     {
                         label: 'Upper Envelope',
+                        type: 'line',
                         data: [],
-                        borderColor: '#00c4b4', // teal
+                        borderColor: '#00c4b4',
                         borderWidth: 1,
                         fill: false
                     },
                     {
                         label: 'Lower Envelope',
+                        type: 'line',
                         data: [],
-                        borderColor: '#ff1744', // red
+                        borderColor: '#ff1744',
                         borderWidth: 1,
                         fill: false
                     }
@@ -67,20 +59,17 @@
             }
         });
 
-        // Функция Гаусса
         function gauss(x, h) {
             return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
         }
 
-        // Расчет Nadaraya-Watson Envelope
         function calculateNWE(prices) {
             const nwe = [];
             let sae = 0;
-            const minLength = Math.min(499, prices.length - 1);
+            const minLength = Math.min(prices.length - 1, 499);
 
             for (let i = 0; i <= minLength; i++) {
-                let sum = 0;
-                let sumw = 0;
+                let sum = 0, sumw = 0;
                 for (let j = 0; j <= minLength; j++) {
                     const w = gauss(i - j, h);
                     sum += prices[j] * w;
@@ -94,32 +83,35 @@
             return { nwe, sae };
         }
 
-        // Получение данных через WebSocket Binance
+        const candles = [];
+        const closePrices = [];
         const ws = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
-        const prices = [];
-        const timestamps = [];
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.k) {
+                const candle = {
+                    x: new Date(data.k.t),
+                    o: parseFloat(data.k.o),
+                    h: parseFloat(data.k.h),
+                    l: parseFloat(data.k.l),
+                    c: parseFloat(data.k.c)
+                };
                 const closePrice = parseFloat(data.k.c);
-                const timestamp = new Date(data.k.t).toLocaleTimeString();
 
-                prices.push(closePrice);
-                timestamps.push(timestamp);
+                candles.push(candle);
+                closePrices.push(closePrice);
 
-                if (prices.length > 500) {
-                    prices.shift();
-                    timestamps.shift();
+                if (candles.length > maxCandles) {
+                    candles.shift();
+                    closePrices.shift();
                 }
 
-                const { nwe, sae } = calculateNWE(prices);
-                const upper = nwe.map(v => v + sae);
-                const lower = nwe.map(v => v - sae);
+                const { nwe, sae } = calculateNWE(closePrices);
+                const upper = nwe.map(v => ({ x: candles[nwe.indexOf(v)].x, y: v + sae }));
+                const lower = nwe.map(v => ({ x: candles[nwe.indexOf(v)].x, y: v - sae }));
 
-                // Обновление графика
-                chart.data.labels = timestamps;
-                chart.data.datasets[0].data = prices;
+                chart.data.datasets[0].data = candles;
                 chart.data.datasets[1].data = upper;
                 chart.data.datasets[2].data = lower;
                 chart.update();
