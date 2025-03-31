@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex"> <!-- Закрываем сайт от индексации -->
     <title>LDO/USDT 15m - Nadaraya-Watson Envelope</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -10,7 +11,7 @@
     <style>
         body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
-        h1 { text-align: center; } /* Центрируем заголовок */
+        h1 { text-align: center; }
     </style>
 </head>
 <body>
@@ -107,7 +108,7 @@
                     },
                     y: {
                         title: { display: true, text: 'Price (USDT)' },
-                        position: 'right' // Шкала цен справа
+                        position: 'right'
                     }
                 }
             }
@@ -144,20 +145,17 @@
             const ema = [];
             let sum = 0;
 
-            // Рассчитываем SMA для первых `period` свечей
             for (let i = 0; i < Math.min(period, prices.length); i++) {
                 sum += prices[i];
             }
             let initialEMA = sum / Math.min(period, prices.length);
             ema.push(initialEMA);
 
-            // Рассчитываем EMA для остальных свечей
             for (let i = Math.min(period, prices.length); i < prices.length; i++) {
                 const value = prices[i] * k + ema[ema.length - 1] * (1 - k);
                 ema.push(value);
             }
 
-            // Заполняем начало массива значением SMA
             for (let i = 0; i < Math.min(period, prices.length) - 1; i++) {
                 ema.unshift(initialEMA);
             }
@@ -170,9 +168,7 @@
         let lastPrice = null;
         let lastPriceTime = null;
 
-        // WebSocket для свечей (15m)
         const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
-        // WebSocket для последней цены (aggTrade)
         const wsTrade = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@aggTrade');
 
         wsKline.onopen = () => {
@@ -279,13 +275,11 @@
                 borderWidth: 1
             }));
 
-            // Линия последней цены
             const lastPriceData = lastPrice && lastPriceTime ? [
                 { x: displayCandles[0]?.x, y: lastPrice },
                 { x: lastPriceTime, y: lastPrice }
             ] : [];
 
-            // Аннотация для значения последней цены на шкале
             if (lastPrice && lastPriceTime) {
                 annotations.push({
                     type: 'label',
@@ -294,10 +288,12 @@
                     yMin: lastPrice,
                     yMax: lastPrice,
                     content: lastPrice.toFixed(4),
-                    backgroundColor: '#ffffff',
+                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
                     color: '#000000',
                     position: 'end',
-                    yAdjust: 0
+                    xAdjust: 50, // Отступ от края графика, чтобы не перекрывать свечи
+                    yAdjust: 0,
+                    font: { size: 12 }
                 });
             }
 
