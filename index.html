@@ -32,20 +32,20 @@
             data: {
                 datasets: [
                     {
-                        label: 'Wick High',
+                        label: 'Upper Wick',
                         data: [],
                         borderColor: '#ffffff',
                         borderWidth: 1,
                         pointRadius: 0,
-                        showLine: false
+                        fill: false
                     },
                     {
-                        label: 'Wick Low',
+                        label: 'Lower Wick',
                         data: [],
                         borderColor: '#ffffff',
                         borderWidth: 1,
                         pointRadius: 0,
-                        showLine: false
+                        fill: false
                     },
                     {
                         label: 'Upper Envelope',
@@ -103,7 +103,6 @@
                 nwe.push(y);
             }
 
-            // Делим sae на количество баров, как в TradingView
             sae = (sae / Math.min(499, n - 1)) * mult;
             return { nwe, sae };
         }
@@ -141,16 +140,22 @@
 
                 console.log("Candles updated:", candles.length);
 
-                const wicksHigh = [];
-                const wicksLow = [];
+                const upperWicks = [];
+                const lowerWicks = [];
                 candles.forEach(c => {
-                    wicksHigh.push({ x: c.x, y: c.h });
-                    wicksHigh.push({ x: c.x, y: Math.max(c.o, c.c) });
-                    wicksHigh.push({ x: c.x, y: null });
+                    // Верхний фитиль: от максимума до верхней границы тела свечи
+                    if (c.h > Math.max(c.o, c.c)) {
+                        upperWicks.push({ x: c.x, y: c.h });
+                        upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
+                        upperWicks.push({ x: c.x, y: null });
+                    }
 
-                    wicksLow.push({ x: c.x, y: Math.min(c.o, c.c) });
-                    wicksLow.push({ x: c.x, y: c.l });
-                    wicksLow.push({ x: c.x, y: null });
+                    // Нижний фитиль: от нижней границы тела свечи до минимума
+                    if (c.l < Math.min(c.o, c.c)) {
+                        lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
+                        lowerWicks.push({ x: c.x, y: c.l });
+                        lowerWicks.push({ x: c.x, y: null });
+                    }
                 });
 
                 const { nwe, sae } = calculateNWE(closePrices);
@@ -169,8 +174,8 @@
                 }));
 
                 chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = wicksHigh;
-                chart.data.datasets[1].data = wicksLow;
+                chart.data.datasets[0].data = upperWicks;
+                chart.data.datasets[1].data = lowerWicks;
                 chart.data.datasets[2].data = upper;
                 chart.data.datasets[3].data = lower;
                 chart.update();
@@ -210,16 +215,20 @@
 
                 console.log("Initial candles processed:", candles.length);
 
-                const wicksHigh = [];
-                const wicksLow = [];
+                const upperWicks = [];
+                const lowerWicks = [];
                 candles.forEach(c => {
-                    wicksHigh.push({ x: c.x, y: c.h });
-                    wicksHigh.push({ x: c.x, y: Math.max(c.o, c.c) });
-                    wicksHigh.push({ x: c.x, y: null });
+                    if (c.h > Math.max(c.o, c.c)) {
+                        upperWicks.push({ x: c.x, y: c.h });
+                        upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
+                        upperWicks.push({ x: c.x, y: null });
+                    }
 
-                    wicksLow.push({ x: c.x, y: Math.min(c.o, c.c) });
-                    wicksLow.push({ x: c.x, y: c.l });
-                    wicksLow.push({ x: c.x, y: null });
+                    if (c.l < Math.min(c.o, c.c)) {
+                        lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
+                        lowerWicks.push({ x: c.x, y: c.l });
+                        lowerWicks.push({ x: c.x, y: null });
+                    }
                 });
 
                 const { nwe, sae } = calculateNWE(closePrices);
@@ -238,8 +247,8 @@
                 }));
 
                 chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = wicksHigh;
-                chart.data.datasets[1].data = wicksLow;
+                chart.data.datasets[0].data = upperWicks;
+                chart.data.datasets[1].data = lowerWicks;
                 chart.data.datasets[2].data = upper;
                 chart.data.datasets[3].data = lower;
                 chart.update();
