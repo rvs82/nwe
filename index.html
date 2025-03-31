@@ -52,7 +52,7 @@
                         data: [],
                         borderColor: '#00c4b4',
                         borderWidth: 1,
-                        pointRadius: 0, // Убираем точки
+                        pointRadius: 0,
                         fill: false
                     },
                     {
@@ -60,13 +60,13 @@
                         data: [],
                         borderColor: '#ff1744',
                         borderWidth: 1,
-                        pointRadius: 0, // Убираем точки
+                        pointRadius: 0,
                         fill: false
                     },
                     {
                         label: 'EMA 100',
                         data: [],
-                        borderColor: '#d873f6', // Розовый
+                        borderColor: '#d873f6',
                         borderWidth: 2,
                         pointRadius: 0,
                         fill: false
@@ -74,7 +74,7 @@
                     {
                         label: 'EMA 200',
                         data: [],
-                        borderColor: '#ffffff', // Белый
+                        borderColor: '#ffffff',
                         borderWidth: 2,
                         pointRadius: 0,
                         fill: false
@@ -128,24 +128,12 @@
         function calculateEMA(prices, period) {
             const k = 2 / (period + 1);
             const ema = [];
-            let sma = 0;
+            let previousEMA = prices[0]; // Начинаем с первой цены
 
-            // Простое скользящее среднее для первых `period` значений
-            for (let i = 0; i < period; i++) {
-                sma += prices[i];
-            }
-            sma /= period;
-            ema.push(sma);
-
-            // Расчет EMA
-            for (let i = period; i < prices.length; i++) {
-                const value = prices[i] * k + ema[ema.length - 1] * (1 - k);
+            for (let i = 0; i < prices.length; i++) {
+                const value = prices[i] * k + previousEMA * (1 - k);
                 ema.push(value);
-            }
-
-            // Заполняем начало массива null, чтобы EMA начиналась с нужного индекса
-            for (let i = 0; i < period - 1; i++) {
-                ema.unshift(null);
+                previousEMA = value;
             }
 
             return ema;
