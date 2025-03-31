@@ -3,172 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LuxAlgo - Nadaraya-Watson Envelope на LINKUSDT</title>
+    <title>Nadaraya-Watson Envelope - LDO/USDT 15m</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
+            background-color: #1e222d;
+            color: white;
             font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #1a1a1a;
-            color: #e0e0e0;
             margin: 0;
             padding: 20px;
         }
-        h1 {
-            color: #00ccff;
+        canvas {
+            max-width: 100%;
         }
-        #chartContainer {
-            width: 100%;
-            height: 600px;
-            background-color: #252525;
-            border-radius: 10px;
-            margin: 20px auto;
-            max-width: 1000px;
-        }
-        #currentPrice {
-            font-size: 16px;
-            color: #00ccff;
-        }
-        #recommendation {
-            margin-top: 10px;
-            font-size: 16px;
-        }
-        .long { color: #00ff00; font-weight: bold; }
-        .short { color: #ff0000; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>LuxAlgo - Nadaraya-Watson Envelope на LINKUSDT</h1>
-    <div id="chartContainer"></div>
-    <div id="currentPrice"></div>
-    <div id="recommendation"></div>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <h1>LDO/USDT 15m - Nadaraya-Watson Envelope</h1>
+    <canvas id="priceChart"></canvas>
+
     <script>
-        // Ждем загрузки страницы, чтобы убедиться, что LightweightCharts доступен
-        window.addEventListener('load', () => {
-            if (typeof LightweightCharts === 'undefined') {
-                document.body.innerHTML += '<p style="color: red;">Ошибка: LightweightCharts не загружен</p>';
-                return;
-            }
+        // Настройки индикатора
+        const h = 8; // Bandwidth
+        const mult = 3; // Multiplier
+        const repaint = true; // Repainting Smoothing
 
-            const chart = LightweightCharts.createChart(document.getElementById('chartContainer'), {
-                width: 1000,
-                height: 600,
-                layout: { background: { color: '#252525' }, textColor: '#e0e0e0' },
-                grid: { vertLines: { color: 'rgba(255, 255, 255, 0.1)' }, horzLines: { color: 'rgba(255, 255, 255, 0.1)' } },
-                timeScale: { timeVisible: true, secondsVisible: false }
-            });
-
-            const candleSeries = chart.addCandlestickSeries({
-                upColor: '#00ff00', downColor: '#ff0000', borderVisible: false,
-                wickUpColor: '#00ff00', wickDownColor: '#ff0000'
-            });
-            const upperSeries = chart.addLineSeries({ color: '#00cccc', lineWidth: 2, title: 'Верхняя граница' });
-            const lowerSeries = chart.addLineSeries({ color: '#ff0000', lineWidth: 2, title: 'Нижняя граница' });
-
-            const dataStore = {
-                candleHistory: [],
-                priceHistory: [],
-                currentPrice: 0,
-                lastDirection: null,
-                directionCount: 0,
-                pendingDirection: null
-            };
-            const h = 8, mult = 3, maxHistory = 500, confirmationCount = 3;
-
-            function gauss(x, h) {
-                return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
-            }
-
-            const ws = new WebSocket('wss://stream.binance.com:9443/ws/linkusdt@aggTrade');
-
-            ws.onopen = () => console.log('Подключено к Binance WebSocket');
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                const now = Math.floor(Date.now() / 1000);
-                const price = parseFloat(data.p);
-
-                dataStore.currentPrice = price;
-                const lastCandle = dataStore.candleHistory.length > 0 ? dataStore.candleHistory[dataStore.candleHistory.length - 1] : null;
-                if (!lastCandle || now - lastCandle.time >= 60) {
-                    dataStore.candleHistory.push({ time: now, open: price, high: price, low: price, close: price });
-                    dataStore.priceHistory.push({ time: now, price: price });
-                } else {
-                    lastCandle.high = Math.max(lastCandle.high, price);
-                    lastCandle.low = Math.min(lastCandle.low, price);
-                    lastCandle.close = price;
-                    dataStore.priceHistory[dataStore.priceHistory.length - 1] = { time: now, price: price };
-                }
-
-                if (dataStore.candleHistory.length > maxHistory) dataStore.candleHistory.shift();
-                if (dataStore.priceHistory.length > maxHistory) dataStore.priceHistory.shift();
-
-                candleSeries.setData(dataStore.candleHistory);
-
-                const nwe = [];
-                let sae = 0;
-                const historyLength = Math.min(maxHistory, dataStore.priceHistory.length);
-                for (let i = 0; i < historyLength; i++) {
-                    let sum = 0, sumw = 0;
-                    for (let j = 0; j < historyLength; j++) {
-                        const w = gauss(i - j, h);
-                        sum += dataStore.priceHistory[j].price * w;
-                        sumw += w;
+        // Инициализация графика
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Close Price',
+                        data: [],
+                        borderColor: '#ffffff',
+                        borderWidth: 1,
+                        fill: false
+                    },
+                    {
+                        label: 'Upper Envelope',
+                        data: [],
+                        borderColor: '#00c4b4', // teal
+                        borderWidth: 1,
+                        fill: false
+                    },
+                    {
+                        label: 'Lower Envelope',
+                        data: [],
+                        borderColor: '#ff1744', // red
+                        borderWidth: 1,
+                        fill: false
                     }
-                    const y = sum / sumw;
-                    sae += Math.abs(dataStore.priceHistory[i].price - y);
-                    nwe.push({ time: dataStore.priceHistory[i].time, value: y });
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { title: { display: true, text: 'Time' } },
+                    y: { title: { display: true, text: 'Price (USDT)' } }
                 }
-
-                sae = sae / historyLength * mult;
-                const upper = nwe.map(point => ({ time: point.time, value: point.value + sae }));
-                const lower = nwe.map(point => ({ time: point.time, value: point.value - sae }));
-
-                upperSeries.setData(upper);
-                lowerSeries.setData(lower);
-
-                document.getElementById('currentPrice').textContent = 'Текущая цена: ' + price.toFixed(2) + ' USDT';
-
-                const currentUpper = upper[upper.length - 1].value;
-                const currentLower = lower[upper.length - 1].value;
-                const recElement = document.getElementById('recommendation');
-
-                if (price > currentUpper && dataStore.lastDirection !== 'short') {
-                    dataStore.pendingDirection = 'short';
-                    dataStore.directionCount = (dataStore.directionCount || 0) + 1;
-                    if (dataStore.directionCount >= confirmationCount) {
-                        dataStore.lastDirection = 'short';
-                        recElement.innerHTML = 'Шорт: Пробой вверх на ' + price.toFixed(2);
-                        recElement.className = 'short';
-                    }
-                } else if (price < currentLower && dataStore.lastDirection !== 'long') {
-                    dataStore.pendingDirection = 'long';
-                    dataStore.directionCount = (dataStore.directionCount || 0) + 1;
-                    if (dataStore.directionCount >= confirmationCount) {
-                        dataStore.lastDirection = 'long';
-                        recElement.innerHTML = 'Лонг: Пробой вниз на ' + price.toFixed(2);
-                        recElement.className = 'long';
-                    }
-                } else if (price >= currentLower && price <= currentUpper) {
-                    dataStore.directionCount = 0;
-                    dataStore.pendingDirection = null;
-                    recElement.innerHTML = 'Ожидание сигнала';
-                    recElement.className = '';
-                }
-
-                chart.timeScale().fitContent();
-            };
-
-            ws.onerror = (error) => console.error('WebSocket error:', error);
-
-            function keepAlive() {
-                fetch(window.location.href, { mode: 'no-cors' })
-                    .then(() => console.log('Пинг выполнен'))
-                    .catch(err => console.error('Ошибка пинга:', err));
             }
-
-            setInterval(keepAlive, 300000);
-            keepAlive();
         });
+
+        // Функция Гаусса
+        function gauss(x, h) {
+            return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
+        }
+
+        // Расчет Nadaraya-Watson Envelope
+        function calculateNWE(prices) {
+            const nwe = [];
+            let sae = 0;
+            const minLength = Math.min(499, prices.length - 1);
+
+            for (let i = 0; i <= minLength; i++) {
+                let sum = 0;
+                let sumw = 0;
+                for (let j = 0; j <= minLength; j++) {
+                    const w = gauss(i - j, h);
+                    sum += prices[j] * w;
+                    sumw += w;
+                }
+                const y = sum / sumw;
+                sae += Math.abs(prices[i] - y);
+                nwe.push(y);
+            }
+            sae = (sae / minLength) * mult;
+            return { nwe, sae };
+        }
+
+        // Получение данных через WebSocket Binance
+        const ws = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
+        const prices = [];
+        const timestamps = [];
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.k) {
+                const closePrice = parseFloat(data.k.c);
+                const timestamp = new Date(data.k.t).toLocaleTimeString();
+
+                prices.push(closePrice);
+                timestamps.push(timestamp);
+
+                if (prices.length > 500) {
+                    prices.shift();
+                    timestamps.shift();
+                }
+
+                const { nwe, sae } = calculateNWE(prices);
+                const upper = nwe.map(v => v + sae);
+                const lower = nwe.map(v => v - sae);
+
+                // Обновление графика
+                chart.data.labels = timestamps;
+                chart.data.datasets[0].data = prices;
+                chart.data.datasets[1].data = upper;
+                chart.data.datasets[2].data = lower;
+                chart.update();
+            }
+        };
+
+        ws.onerror = (error) => console.error('WebSocket error:', error);
     </script>
 </body>
 </html>
