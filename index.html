@@ -6,6 +6,7 @@
     <title>LDO/USDT 15m - Nadaraya-Watson Envelope</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
         body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
@@ -45,6 +46,13 @@
                         borderWidth: 1,
                         pointRadius: 0,
                         showLine: false
+                    },
+                    {
+                        label: 'Close Price',
+                        data: [],
+                        borderColor: '#ffffff',
+                        borderWidth: 1,
+                        fill: false
                     },
                     {
                         label: 'Upper Envelope',
@@ -139,6 +147,7 @@
                     wicksLow.push({ x: c.x, y: null });
                 });
 
+                const closeData = candles.map(c => ({ x: c.x, y: c.c }));
                 const { nwe, sae } = calculateNWE(closePrices);
                 const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
                 const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
@@ -157,8 +166,9 @@
                 chart.options.plugins.annotation.annotations = annotations;
                 chart.data.datasets[0].data = wicksHigh;
                 chart.data.datasets[1].data = wicksLow;
-                chart.data.datasets[2].data = upper;
-                chart.data.datasets[3].data = lower;
+                chart.data.datasets[2].data = closeData;
+                chart.data.datasets[3].data = upper;
+                chart.data.datasets[4].data = lower;
                 chart.update();
                 console.log("Chart updated");
             } catch (error) {
