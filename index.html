@@ -89,11 +89,11 @@
         function calculateNWE(prices) {
             const nwe = [];
             let sae = 0;
-            const minLength = Math.min(prices.length - 1, 499);
+            const n = prices.length;
 
-            for (let i = 0; i <= minLength; i++) {
+            for (let i = 0; i < n; i++) {
                 let sum = 0, sumw = 0;
-                for (let j = 0; j <= minLength; j++) {
+                for (let j = 0; j < n; j++) {
                     const w = gauss(i - j, h);
                     sum += prices[j] * w;
                     sumw += w;
@@ -102,7 +102,9 @@
                 sae += Math.abs(prices[i] - y);
                 nwe.push(y);
             }
-            sae = (sae / minLength) * mult;
+
+            // Делим sae на количество баров, как в TradingView
+            sae = (sae / Math.min(499, n - 1)) * mult;
             return { nwe, sae };
         }
 
@@ -184,7 +186,6 @@
             console.log("WebSocket connection closed");
         };
 
-        // Инициализация графика с историческими данными
         async function fetchInitialCandles() {
             try {
                 const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=LDOUSDT&interval=15m&limit=${maxCandles}`);
