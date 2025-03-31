@@ -66,7 +66,7 @@
                     {
                         label: 'EMA 100',
                         data: [],
-                        borderColor: '#d873f6', // Розовый, как в TradingView
+                        borderColor: '#d873f6', // Розовый
                         borderWidth: 2,
                         pointRadius: 0,
                         fill: false
@@ -128,17 +128,26 @@
         function calculateEMA(prices, period) {
             const k = 2 / (period + 1);
             const ema = [];
-            let previousEMA = prices[0];
+            let sma = 0;
 
-            for (let i = 0; i < prices.length; i++) {
-                if (i === 0) {
-                    ema.push(previousEMA);
-                } else {
-                    const currentEMA = prices[i] * k + previousEMA * (1 - k);
-                    ema.push(currentEMA);
-                    previousEMA = currentEMA;
-                }
+            // Простое скользящее среднее для первых `period` значений
+            for (let i = 0; i < period; i++) {
+                sma += prices[i];
             }
+            sma /= period;
+            ema.push(sma);
+
+            // Расчет EMA
+            for (let i = period; i < prices.length; i++) {
+                const value = prices[i] * k + ema[ema.length - 1] * (1 - k);
+                ema.push(value);
+            }
+
+            // Заполняем начало массива null, чтобы EMA начиналась с нужного индекса
+            for (let i = 0; i < period - 1; i++) {
+                ema.unshift(null);
+            }
+
             return ema;
         }
 
@@ -287,3 +296,25 @@
                     yMin: Math.min(c.o, c.c),
                     yMax: Math.max(c.o, c.c),
                     backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
+                    borderColor: '#ffffff',
+                    borderWidth: 1
+                }));
+
+                chart.options.plugins.annotation.annotations = annotations;
+                chart.data.datasets[0].data = upperWicks;
+                chart.data.datasets[1].data = lowerWicks;
+                chart.data.datasets[2].data = upper;
+                chart.data.datasets[3].data = lower;
+                chart.data.datasets[4].data = ema100Data;
+                chart.data.datasets[5].data = ema200Data;
+                chart.update();
+                console.log("Initial chart updated");
+            } catch (error) {
+                console.error("Error fetching initial candles:", error);
+            }
+        }
+
+        fetchInitialCandles();
+    </script>
+</body>
+</html>
