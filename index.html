@@ -22,7 +22,7 @@
         const h = 8;
         const mult = 3;
         const repaint = true;
-        const maxCandles = 126;
+        const maxCandles = 200; // Увеличиваем до 200 свечей
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         console.log("Canvas context initialized:", ctx);
@@ -78,6 +78,15 @@
                         borderWidth: 2,
                         pointRadius: 0,
                         fill: false
+                    },
+                    {
+                        label: 'Last Price',
+                        data: [],
+                        borderColor: '#ffffff',
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        fill: false,
+                        borderDash: [5, 5]
                     }
                 ]
             },
@@ -94,7 +103,10 @@
                         time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
                         title: { display: true, text: 'Time' }
                     },
-                    y: { title: { display: true, text: 'Price (USDT)' } }
+                    y: {
+                        title: { display: true, text: 'Price (USDT)' },
+                        position: 'right' // Переносим шкалу цен вправо
+                    }
                 }
             }
         });
@@ -128,12 +140,24 @@
         function calculateEMA(prices, period) {
             const k = 2 / (period + 1);
             const ema = [];
-            let previousEMA = prices[0]; // Начинаем с первой цены
+            let sum = 0;
 
-            for (let i = 0; i < prices.length; i++) {
-                const value = prices[i] * k + previousEMA * (1 - k);
+            // Рассчитываем SMA для первых `period` свечей
+            for (let i = 0; i < Math.min(period, prices.length); i++) {
+                sum += prices[i];
+            }
+            let initialEMA = sum / Math.min(period, prices.length);
+            ema.push(initialEMA);
+
+            // Рассчитываем EMA для остальных свечей
+            for (let i = Math.min(period, prices.length); i < prices.length; i++) {
+                const value = prices[i] * k + ema[ema.length - 1] * (1 - k);
                 ema.push(value);
-                previousEMA = value;
+            }
+
+            // Заполняем начало массива значением SMA
+            for (let i = 0; i < Math.min(period, prices.length) - 1; i++) {
+                ema.unshift(initialEMA);
             }
 
             return ema;
@@ -141,14 +165,24 @@
 
         const candles = [];
         const closePrices = [];
-        const ws = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
+        let lastPrice = null;
+        let lastPriceTime = null;
 
-        ws.onopen = () => {
-            console.log("WebSocket connection opened");
+        // WebSocket для свечей (15m)
+        const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
+        // WebSocket для последней цены (aggTrade)
+        const wsTrade = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@aggTrade');
+
+        wsKline.onopen = () => {
+            console.log("Kline WebSocket connection opened");
         };
 
-        ws.onmessage = (event) => {
-            console.log("WebSocket message received:", event.data);
+        wsTrade.onopen = () => {
+            console.log("Trade WebSocket connection opened");
+        };
+
+        wsKline.onmessage = (event) => {
+            console.log("Kline WebSocket message received:", event.data);
             const data = JSON.parse(event.data);
             if (data.k) {
                 const timestamp = new Date(data.k.t);
@@ -170,63 +204,126 @@
                     closePrices.shift();
                 }
 
-                console.log("Candles updated:", candles.length);
-
-                const upperWicks = [];
-                const lowerWicks = [];
-                candles.forEach(c => {
-                    if (c.h > Math.max(c.o, c.c)) {
-                        upperWicks.push({ x: c.x, y: c.h });
-                        upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
-                        upperWicks.push({ x: c.x, y: null });
-                    }
-
-                    if (c.l < Math.min(c.o, c.c)) {
-                        lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
-                        lowerWicks.push({ x: c.x, y: c.l });
-                        lowerWicks.push({ x: c.x, y: null });
-                    }
-                });
-
-                const { nwe, sae } = calculateNWE(closePrices);
-                const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
-                const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
-
-                const ema100 = calculateEMA(closePrices, 100);
-                const ema200 = calculateEMA(closePrices, 200);
-                const ema100Data = ema100.map((v, i) => ({ x: candles[i]?.x, y: v }));
-                const ema200Data = ema200.map((v, i) => ({ x: candles[i]?.x, y: v }));
-
-                const annotations = candles.map((c, i) => ({
-                    type: 'box',
-                    xMin: c.x.getTime() - 300000,
-                    xMax: c.x.getTime() + 300000,
-                    yMin: Math.min(c.o, c.c),
-                    yMax: Math.max(c.o, c.c),
-                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
-                    borderColor: '#ffffff',
-                    borderWidth: 1
-                }));
-
-                chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = upperWicks;
-                chart.data.datasets[1].data = lowerWicks;
-                chart.data.datasets[2].data = upper;
-                chart.data.datasets[3].data = lower;
-                chart.data.datasets[4].data = ema100Data;
-                chart.data.datasets[5].data = ema200Data;
-                chart.update();
-                console.log("Chart updated");
+                updateChart();
             }
         };
 
-        ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
+        wsTrade.onmessage = (event) => {
+            console.log("Trade WebSocket message received:", event.data);
+            const data = JSON.parse(event.data);
+            if (data.p) {
+                lastPrice = parseFloat(data.p);
+                lastPriceTime = new Date(data.T);
+                updateChart();
+            }
         };
 
-        ws.onclose = () => {
-            console.log("WebSocket connection closed");
+        wsKline.onerror = (error) => {
+            console.error("Kline WebSocket error:", error);
         };
+
+        wsTrade.onerror = (error) => {
+            console.error("Trade WebSocket error:", error);
+        };
+
+        wsKline.onclose = () => {
+            console.log("Kline WebSocket connection closed");
+        };
+
+        wsTrade.onclose = () => {
+            console.log("Trade WebSocket connection closed");
+        };
+
+        function updateChart() {
+            console.log("Candles updated:", candles.length);
+
+            const upperWicks = [];
+            const lowerWicks = [];
+            candles.forEach(c => {
+                if (c.h > Math.max(c.o, c.c)) {
+                    upperWicks.push({ x: c.x, y: c.h });
+                    upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
+                    upperWicks.push({ x: c.x, y: null });
+                }
+
+                if (c.l < Math.min(c.o, c.c)) {
+                    lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
+                    lowerWicks.push({ x: c.x, y: c.l });
+                    lowerWicks.push({ x: c.x, y: null });
+                }
+            });
+
+            const { nwe, sae } = calculateNWE(closePrices);
+            const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
+            const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
+
+            const ema100 = calculateEMA(closePrices, 100);
+            const ema200 = calculateEMA(closePrices, 200);
+            const ema100Data = ema100.map((v, i) => ({ x: candles[i]?.x, y: v }));
+            const ema200Data = ema200.map((v, i) => ({ x: candles[i]?.x, y: v }));
+
+            const annotations = candles.map((c, i) => ({
+                type: 'box',
+                xMin: c.x.getTime() - 300000,
+                xMax: c.x.getTime() + 300000,
+                yMin: Math.min(c.o, c.c),
+                yMax: Math.max(c.o, c.c),
+                backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
+                borderColor: '#ffffff',
+                borderWidth: 1
+            }));
+
+            // Линия последней цены
+            const lastPriceData = lastPrice && lastPriceTime ? [
+                { x: candles[0]?.x, y: lastPrice },
+                { x: lastPriceTime, y: lastPrice }
+            ] : [];
+
+            // Добавляем значения границ канала на шкалу
+            if (upper.length > 0 && lower.length > 0) {
+                const lastUpper = upper[upper.length - 1].y;
+                const lastLower = lower[lower.length - 1].y;
+                chart.options.plugins.annotation.annotations = [
+                    ...annotations,
+                    {
+                        type: 'label',
+                        xMin: candles[candles.length - 1]?.x.getTime(),
+                        xMax: candles[candles.length - 1]?.x.getTime(),
+                        yMin: lastUpper,
+                        yMax: lastUpper,
+                        content: lastUpper.toFixed(4),
+                        backgroundColor: '#00c4b4',
+                        color: '#ffffff',
+                        position: 'end',
+                        yAdjust: -10
+                    },
+                    {
+                        type: 'label',
+                        xMin: candles[candles.length - 1]?.x.getTime(),
+                        xMax: candles[candles.length - 1]?.x.getTime(),
+                        yMin: lastLower,
+                        yMax: lastLower,
+                        content: lastLower.toFixed(4),
+                        backgroundColor: '#ff1744',
+                        color: '#ffffff',
+                        position: 'end',
+                        yAdjust: 10
+                    }
+                ];
+            } else {
+                chart.options.plugins.annotation.annotations = annotations;
+            }
+
+            chart.data.datasets[0].data = upperWicks;
+            chart.data.datasets[1].data = lowerWicks;
+            chart.data.datasets[2].data = upper;
+            chart.data.datasets[3].data = lower;
+            chart.data.datasets[4].data = ema100Data;
+            chart.data.datasets[5].data = ema200Data;
+            chart.data.datasets[6].data = lastPriceData;
+            chart.update();
+            console.log("Chart updated");
+        }
 
         async function fetchInitialCandles() {
             try {
@@ -251,52 +348,7 @@
                 }
 
                 console.log("Initial candles processed:", candles.length);
-
-                const upperWicks = [];
-                const lowerWicks = [];
-                candles.forEach(c => {
-                    if (c.h > Math.max(c.o, c.c)) {
-                        upperWicks.push({ x: c.x, y: c.h });
-                        upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
-                        upperWicks.push({ x: c.x, y: null });
-                    }
-
-                    if (c.l < Math.min(c.o, c.c)) {
-                        lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
-                        lowerWicks.push({ x: c.x, y: c.l });
-                        lowerWicks.push({ x: c.x, y: null });
-                    }
-                });
-
-                const { nwe, sae } = calculateNWE(closePrices);
-                const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
-                const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
-
-                const ema100 = calculateEMA(closePrices, 100);
-                const ema200 = calculateEMA(closePrices, 200);
-                const ema100Data = ema100.map((v, i) => ({ x: candles[i]?.x, y: v }));
-                const ema200Data = ema200.map((v, i) => ({ x: candles[i]?.x, y: v }));
-
-                const annotations = candles.map((c, i) => ({
-                    type: 'box',
-                    xMin: c.x.getTime() - 300000,
-                    xMax: c.x.getTime() + 300000,
-                    yMin: Math.min(c.o, c.c),
-                    yMax: Math.max(c.o, c.c),
-                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
-                    borderColor: '#ffffff',
-                    borderWidth: 1
-                }));
-
-                chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = upperWicks;
-                chart.data.datasets[1].data = lowerWicks;
-                chart.data.datasets[2].data = upper;
-                chart.data.datasets[3].data = lower;
-                chart.data.datasets[4].data = ema100Data;
-                chart.data.datasets[5].data = ema200Data;
-                chart.update();
-                console.log("Initial chart updated");
+                updateChart();
             } catch (error) {
                 console.error("Error fetching initial candles:", error);
             }
