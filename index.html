@@ -26,51 +26,17 @@
             type: 'line',
             data: {
                 datasets: [
-                    {
-                        label: 'Wick High',
-                        data: [],
-                        borderColor: '#ffffff',
-                        borderWidth: 1,
-                        pointRadius: 0,
-                        showLine: false
-                    },
-                    {
-                        label: 'Wick Low',
-                        data: [],
-                        borderColor: '#ffffff',
-                        borderWidth: 1,
-                        pointRadius: 0,
-                        showLine: false
-                    },
-                    {
-                        label: 'Upper Envelope',
-                        data: [],
-                        borderColor: '#00c4b4',
-                        borderWidth: 1,
-                        fill: false
-                    },
-                    {
-                        label: 'Lower Envelope',
-                        data: [],
-                        borderColor: '#ff1744',
-                        borderWidth: 1,
-                        fill: false
-                    }
+                    { label: 'Wick High', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, showLine: false },
+                    { label: 'Wick Low', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, showLine: false },
+                    { label: 'Upper Envelope', data: [], borderColor: '#00c4b4', borderWidth: 1, fill: false },
+                    { label: 'Lower Envelope', data: [], borderColor: '#ff1744', borderWidth: 1, fill: false }
                 ]
             },
             options: {
                 responsive: true,
-                plugins: {
-                    annotation: {
-                        annotations: []
-                    }
-                },
+                plugins: { annotation: { annotations: [] } },
                 scales: {
-                    x: {
-                        type: 'time',
-                        time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
-                        title: { display: true, text: 'Time' }
-                    },
+                    x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' } },
                     y: { title: { display: true, text: 'Price (USDT)' } }
                 }
             }
@@ -102,9 +68,32 @@
 
         const candles = [];
         const closePrices = [];
-        const ws = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
 
+        // Загрузка начальных данных через REST API
+        fetch('https://api.binance.com/api/v3/klines?symbol=LDOUSDT&interval=15m&limit=126')
+            .then(response => response.json())
+            .then(data => {
+                data.forEach(kline => {
+                    const candle = {
+                        x: new Date(kline[0]),
+                        o: parseFloat(kline[1]),
+                        h: parseFloat(kline[2]),
+                        l: parseFloat(kline[3]),
+                        c: parseFloat(kline[4])
+                    };
+                    candles.push(candle);
+                    closePrices.push(candle.c);
+                });
+
+                updateChart();
+            })
+            .catch(error => console.error('Error fetching initial data:', error));
+
+        // WebSocket для обновления данных
+        const ws = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
+        ws.onopen = () => console.log('WebSocket connected');
         ws.onmessage = (event) => {
+            console.log('WebSocket message received:', event.data);
             const data = JSON.parse(event.data);
             if (data.k) {
                 const timestamp = new Date(data.k.t);
@@ -125,33 +114,37 @@
                     closePrices.shift();
                 }
 
-                const wicksHigh = candles.map(c => ({ x: c.x, y: c.h }));
-                const wicksLow = candles.map(c => ({ x: c.x, y: c.l }));
-                const { nwe, sae } = calculateNWE(closePrices);
-                const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
-                const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
-
-                const annotations = candles.map((c, i) => ({
-                    type: 'box',
-                    xMin: c.x - 300000,
-                    xMax: c.x + 300000,
-                    yMin: Math.min(c.o, c.c),
-                    yMax: Math.max(c.o, c.c),
-                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
-                    borderColor: '#ffffff',
-                    borderWidth: 1
-                }));
-
-                chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = wicksHigh;
-                chart.data.datasets[1].data = wicksLow;
-                chart.data.datasets[2].data = upper;
-                chart.data.datasets[3].data = lower;
-                chart.update();
+                updateChart();
             }
         };
-
         ws.onerror = (error) => console.error('WebSocket error:', error);
+        ws.onclose = () => console.log('WebSocket closed');
+
+        function updateChart() {
+            const wicksHigh = candles.map(c => ({ x: c.x, y: c.h }));
+            const wicksLow = candles.map(c => ({ x: c.x, y: c.l }));
+            const { nwe, sae } = calculateNWE(closePrices);
+            const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
+            const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
+
+            const annotations = candles.map((c, i) => ({
+                type: 'box',
+                xMin: c.x - 300000,
+                xMax: c.x + 300000,
+                yMin: Math.min(c.o, c.c),
+                yMax: Math.max(c.o, c.c),
+                backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
+                borderColor: '#ffffff',
+                borderWidth: 1
+            }));
+
+            chart.options.plugins.annotation.annotations = annotations;
+            chart.data.datasets[0].data = wicksHigh;
+            chart.data.datasets[1].data = wicksLow;
+            chart.data.datasets[2].data = upper;
+            chart.data.datasets[3].data = lower;
+            chart.update();
+        }
     </script>
 </body>
 </html>
