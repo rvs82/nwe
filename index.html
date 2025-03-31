@@ -10,6 +10,7 @@
     <style>
         body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
+        h1 { text-align: center; } /* Центрируем заголовок */
     </style>
 </head>
 <body>
@@ -20,10 +21,10 @@
         console.log("Starting script...");
 
         const h = 8;
-        const mult = 2.89; // Скорректировано для совпадения с TradingView (верх 0.8816, низ 0.8561)
+        const mult = 2.89;
         const repaint = true;
-        const maxCandles = 126; // Отображаем 126 свечей
-        const maxCalcCandles = 500; // Для расчета используем до 500 свечей
+        const maxCandles = 126;
+        const maxCalcCandles = 500;
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         console.log("Canvas context initialized:", ctx);
@@ -79,6 +80,15 @@
                         borderWidth: 2,
                         pointRadius: 0,
                         fill: false
+                    },
+                    {
+                        label: 'Last Price',
+                        data: [],
+                        borderColor: '#ffffff',
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        fill: false,
+                        borderDash: [5, 5]
                     }
                 ]
             },
@@ -95,7 +105,10 @@
                         time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
                         title: { display: true, text: 'Time' }
                     },
-                    y: { title: { display: true, text: 'Price (USDT)' } }
+                    y: {
+                        title: { display: true, text: 'Price (USDT)' },
+                        position: 'right' // Шкала цен справа
+                    }
                 }
             }
         });
@@ -129,12 +142,24 @@
         function calculateEMA(prices, period) {
             const k = 2 / (period + 1);
             const ema = [];
-            let previousEMA = prices[0];
+            let sum = 0;
 
-            for (let i = 0; i < prices.length; i++) {
-                const value = prices[i] * k + previousEMA * (1 - k);
+            // Рассчитываем SMA для первых `period` свечей
+            for (let i = 0; i < Math.min(period, prices.length); i++) {
+                sum += prices[i];
+            }
+            let initialEMA = sum / Math.min(period, prices.length);
+            ema.push(initialEMA);
+
+            // Рассчитываем EMA для остальных свечей
+            for (let i = Math.min(period, prices.length); i < prices.length; i++) {
+                const value = prices[i] * k + ema[ema.length - 1] * (1 - k);
                 ema.push(value);
-                previousEMA = value;
+            }
+
+            // Заполняем начало массива значением SMA
+            for (let i = 0; i < Math.min(period, prices.length) - 1; i++) {
+                ema.unshift(initialEMA);
             }
 
             return ema;
@@ -142,14 +167,24 @@
 
         const candles = [];
         const closePrices = [];
-        const ws = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
+        let lastPrice = null;
+        let lastPriceTime = null;
 
-        ws.onopen = () => {
-            console.log("WebSocket connection opened");
+        // WebSocket для свечей (15m)
+        const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
+        // WebSocket для последней цены (aggTrade)
+        const wsTrade = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@aggTrade');
+
+        wsKline.onopen = () => {
+            console.log("Kline WebSocket connection opened");
         };
 
-        ws.onmessage = (event) => {
-            console.log("WebSocket message received:", event.data);
+        wsTrade.onopen = () => {
+            console.log("Trade WebSocket connection opened");
+        };
+
+        wsKline.onmessage = (event) => {
+            console.log("Kline WebSocket message received:", event.data);
             const data = JSON.parse(event.data);
             if (data.k) {
                 const timestamp = new Date(data.k.t);
@@ -171,70 +206,112 @@
                     closePrices.shift();
                 }
 
-                console.log("Candles updated:", candles.length);
-
-                // Ограничиваем отображение последними 126 свечами
-                const displayCandles = candles.slice(-maxCandles);
-                const displayClosePrices = closePrices.slice(-maxCandles);
-
-                const upperWicks = [];
-                const lowerWicks = [];
-                displayCandles.forEach(c => {
-                    if (c.h > Math.max(c.o, c.c)) {
-                        upperWicks.push({ x: c.x, y: c.h });
-                        upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
-                        upperWicks.push({ x: c.x, y: null });
-                    }
-
-                    if (c.l < Math.min(c.o, c.c)) {
-                        lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
-                        lowerWicks.push({ x: c.x, y: c.l });
-                        lowerWicks.push({ x: c.x, y: null });
-                    }
-                });
-
-                // Перерасчет NWE на основе всех свечей (до 500)
-                const { nwe, sae } = calculateNWE(closePrices);
-                // Ограничиваем отображение NWE последними 126 свечами
-                const displayNwe = nwe.slice(-maxCandles);
-                const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
-                const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
-
-                const ema100 = calculateEMA(displayClosePrices, 100);
-                const ema200 = calculateEMA(displayClosePrices, 200);
-                const ema100Data = ema100.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-                const ema200Data = ema200.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-
-                const annotations = displayCandles.map((c, i) => ({
-                    type: 'box',
-                    xMin: c.x.getTime() - 300000,
-                    xMax: c.x.getTime() + 300000,
-                    yMin: Math.min(c.o, c.c),
-                    yMax: Math.max(c.o, c.c),
-                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
-                    borderColor: '#ffffff',
-                    borderWidth: 1
-                }));
-
-                chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = upperWicks;
-                chart.data.datasets[1].data = lowerWicks;
-                chart.data.datasets[2].data = upper;
-                chart.data.datasets[3].data = lower;
-                chart.data.datasets[4].data = ema100Data;
-                chart.data.datasets[5].data = ema200Data;
-                chart.update();
-                console.log("Chart updated");
+                updateChart();
             }
         };
 
-        ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
+        wsTrade.onmessage = (event) => {
+            console.log("Trade WebSocket message received:", event.data);
+            const data = JSON.parse(event.data);
+            if (data.p) {
+                lastPrice = parseFloat(data.p);
+                lastPriceTime = new Date(data.T);
+                updateChart();
+            }
         };
 
-        ws.onclose = () => {
-            console.log("WebSocket connection closed");
+        wsKline.onerror = (error) => {
+            console.error("Kline WebSocket error:", error);
         };
+
+        wsTrade.onerror = (error) => {
+            console.error("Trade WebSocket error:", error);
+        };
+
+        wsKline.onclose = () => {
+            console.log("Kline WebSocket connection closed");
+        };
+
+        wsTrade.onclose = () => {
+            console.log("Trade WebSocket connection closed");
+        };
+
+        function updateChart() {
+            console.log("Candles updated:", candles.length);
+
+            const displayCandles = candles.slice(-maxCandles);
+            const displayClosePrices = closePrices.slice(-maxCandles);
+
+            const upperWicks = [];
+            const lowerWicks = [];
+            displayCandles.forEach(c => {
+                if (c.h > Math.max(c.o, c.c)) {
+                    upperWicks.push({ x: c.x, y: c.h });
+                    upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
+                    upperWicks.push({ x: c.x, y: null });
+                }
+
+                if (c.l < Math.min(c.o, c.c)) {
+                    lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
+                    lowerWicks.push({ x: c.x, y: c.l });
+                    lowerWicks.push({ x: c.x, y: null });
+                }
+            });
+
+            const { nwe, sae } = calculateNWE(closePrices);
+            const displayNwe = nwe.slice(-maxCandles);
+            const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
+            const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
+
+            const ema100 = calculateEMA(closePrices, 100).slice(-maxCandles);
+            const ema200 = calculateEMA(closePrices, 200).slice(-maxCandles);
+            const ema100Data = ema100.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const ema200Data = ema200.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+
+            const annotations = displayCandles.map((c, i) => ({
+                type: 'box',
+                xMin: c.x.getTime() - 300000,
+                xMax: c.x.getTime() + 300000,
+                yMin: Math.min(c.o, c.c),
+                yMax: Math.max(c.o, c.c),
+                backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
+                borderColor: '#ffffff',
+                borderWidth: 1
+            }));
+
+            // Линия последней цены
+            const lastPriceData = lastPrice && lastPriceTime ? [
+                { x: displayCandles[0]?.x, y: lastPrice },
+                { x: lastPriceTime, y: lastPrice }
+            ] : [];
+
+            // Аннотация для значения последней цены на шкале
+            if (lastPrice && lastPriceTime) {
+                annotations.push({
+                    type: 'label',
+                    xMin: lastPriceTime.getTime(),
+                    xMax: lastPriceTime.getTime(),
+                    yMin: lastPrice,
+                    yMax: lastPrice,
+                    content: lastPrice.toFixed(4),
+                    backgroundColor: '#ffffff',
+                    color: '#000000',
+                    position: 'end',
+                    yAdjust: 0
+                });
+            }
+
+            chart.options.plugins.annotation.annotations = annotations;
+            chart.data.datasets[0].data = upperWicks;
+            chart.data.datasets[1].data = lowerWicks;
+            chart.data.datasets[2].data = upper;
+            chart.data.datasets[3].data = lower;
+            chart.data.datasets[4].data = ema100Data;
+            chart.data.datasets[5].data = ema200Data;
+            chart.data.datasets[6].data = lastPriceData;
+            chart.update();
+            console.log("Chart updated");
+        }
 
         async function fetchInitialCandles() {
             try {
@@ -259,56 +336,7 @@
                 }
 
                 console.log("Initial candles processed:", candles.length);
-
-                const displayCandles = candles.slice(-maxCandles);
-                const displayClosePrices = closePrices.slice(-maxCandles);
-
-                const upperWicks = [];
-                const lowerWicks = [];
-                displayCandles.forEach(c => {
-                    if (c.h > Math.max(c.o, c.c)) {
-                        upperWicks.push({ x: c.x, y: c.h });
-                        upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
-                        upperWicks.push({ x: c.x, y: null });
-                    }
-
-                    if (c.l < Math.min(c.o, c.c)) {
-                        lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
-                        lowerWicks.push({ x: c.x, y: c.l });
-                        lowerWicks.push({ x: c.x, y: null });
-                    }
-                });
-
-                const { nwe, sae } = calculateNWE(closePrices);
-                const displayNwe = nwe.slice(-maxCandles);
-                const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
-                const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
-
-                const ema100 = calculateEMA(displayClosePrices, 100);
-                const ema200 = calculateEMA(displayClosePrices, 200);
-                const ema100Data = ema100.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-                const ema200Data = ema200.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-
-                const annotations = displayCandles.map((c, i) => ({
-                    type: 'box',
-                    xMin: c.x.getTime() - 300000,
-                    xMax: c.x.getTime() + 300000,
-                    yMin: Math.min(c.o, c.c),
-                    yMax: Math.max(c.o, c.c),
-                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
-                    borderColor: '#ffffff',
-                    borderWidth: 1
-                }));
-
-                chart.options.plugins.annotation.annotations = annotations;
-                chart.data.datasets[0].data = upperWicks;
-                chart.data.datasets[1].data = lowerWicks;
-                chart.data.datasets[2].data = upper;
-                chart.data.datasets[3].data = lower;
-                chart.data.datasets[4].data = ema100Data;
-                chart.data.datasets[5].data = ema200Data;
-                chart.update();
-                console.log("Initial chart updated");
+                updateChart();
             } catch (error) {
                 console.error("Error fetching initial candles:", error);
             }
