@@ -48,13 +48,6 @@
                         showLine: false
                     },
                     {
-                        label: 'Close Price',
-                        data: [],
-                        borderColor: '#ffffff',
-                        borderWidth: 1,
-                        fill: false
-                    },
-                    {
                         label: 'Upper Envelope',
                         data: [],
                         borderColor: '#00c4b4',
@@ -113,27 +106,38 @@
             return { nwe, sae };
         }
 
-        async function fetchCandles() {
-            try {
-                const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=LDOUSDT&interval=15m&limit=${maxCandles}`);
-                const data = await response.json();
-                console.log("Fetched data:", data);
+        const candles = [];
+        const closePrices = [];
+        const ws = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
 
-                const candles = [];
-                const closePrices = [];
+        ws.onopen = () => {
+            console.log("WebSocket connection opened");
+        };
 
-                data.forEach(candle => {
-                    const timestamp = new Date(parseInt(candle[0]));
-                    const open = parseFloat(candle[1]);
-                    const high = parseFloat(candle[2]);
-                    const low = parseFloat(candle[3]);
-                    const close = parseFloat(candle[4]);
+        ws.onmessage = (event) => {
+            console.log("WebSocket message received:", event.data);
+            const data = JSON.parse(event.data);
+            if (data.k) {
+                const timestamp = new Date(data.k.t);
+                const open = parseFloat(data.k.o);
+                const high = parseFloat(data.k.h);
+                const low = parseFloat(data.k.l);
+                const close = parseFloat(data.k.c);
 
+                if (candles.length > 0 && candles[candles.length - 1].x.getTime() === timestamp.getTime()) {
+                    candles[candles.length - 1] = { x: timestamp, o: open, h: high, l: low, c: close };
+                    closePrices[closePrices.length - 1] = close;
+                } else {
                     candles.push({ x: timestamp, o: open, h: high, l: low, c: close });
                     closePrices.push(close);
-                });
+                }
 
-                console.log("Candles processed:", candles.length);
+                if (candles.length > maxCandles) {
+                    candles.shift();
+                    closePrices.shift();
+                }
+
+                console.log("Candles updated:", candles.length);
 
                 const wicksHigh = [];
                 const wicksLow = [];
@@ -147,7 +151,6 @@
                     wicksLow.push({ x: c.x, y: null });
                 });
 
-                const closeData = candles.map(c => ({ x: c.x, y: c.c }));
                 const { nwe, sae } = calculateNWE(closePrices);
                 const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
                 const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
@@ -166,18 +169,86 @@
                 chart.options.plugins.annotation.annotations = annotations;
                 chart.data.datasets[0].data = wicksHigh;
                 chart.data.datasets[1].data = wicksLow;
-                chart.data.datasets[2].data = closeData;
-                chart.data.datasets[3].data = upper;
-                chart.data.datasets[4].data = lower;
+                chart.data.datasets[2].data = upper;
+                chart.data.datasets[3].data = lower;
                 chart.update();
                 console.log("Chart updated");
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket connection closed");
+        };
+
+        // Инициализация графика с историческими данными
+        async function fetchInitialCandles() {
+            try {
+                const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=LDOUSDT&interval=15m&limit=${maxCandles}`);
+                const data = await response.json();
+                console.log("Fetched initial data:", data);
+
+                data.forEach(candle => {
+                    const timestamp = new Date(parseInt(candle[0]));
+                    const open = parseFloat(candle[1]);
+                    const high = parseFloat(candle[2]);
+                    const low = parseFloat(candle[3]);
+                    const close = parseFloat(candle[4]);
+
+                    candles.push({ x: timestamp, o: open, h: high, l: low, c: close });
+                    closePrices.push(close);
+                });
+
+                if (candles.length > maxCandles) {
+                    candles.splice(0, candles.length - maxCandles);
+                    closePrices.splice(0, closePrices.length - maxCandles);
+                }
+
+                console.log("Initial candles processed:", candles.length);
+
+                const wicksHigh = [];
+                const wicksLow = [];
+                candles.forEach(c => {
+                    wicksHigh.push({ x: c.x, y: c.h });
+                    wicksHigh.push({ x: c.x, y: Math.max(c.o, c.c) });
+                    wicksHigh.push({ x: c.x, y: null });
+
+                    wicksLow.push({ x: c.x, y: Math.min(c.o, c.c) });
+                    wicksLow.push({ x: c.x, y: c.l });
+                    wicksLow.push({ x: c.x, y: null });
+                });
+
+                const { nwe, sae } = calculateNWE(closePrices);
+                const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
+                const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
+
+                const annotations = candles.map((c, i) => ({
+                    type: 'box',
+                    xMin: c.x.getTime() - 300000,
+                    xMax: c.x.getTime() + 300000,
+                    yMin: Math.min(c.o, c.c),
+                    yMax: Math.max(c.o, c.c),
+                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
+                    borderColor: '#ffffff',
+                    borderWidth: 1
+                }));
+
+                chart.options.plugins.annotation.annotations = annotations;
+                chart.data.datasets[0].data = wicksHigh;
+                chart.data.datasets[1].data = wicksLow;
+                chart.data.datasets[2].data = upper;
+                chart.data.datasets[3].data = lower;
+                chart.update();
+                console.log("Initial chart updated");
             } catch (error) {
-                console.error("Error fetching candles:", error);
+                console.error("Error fetching initial candles:", error);
             }
         }
 
-        fetchCandles();
-        setInterval(fetchCandles, 60000);
+        fetchInitialCandles();
     </script>
 </body>
 </html>
