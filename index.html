@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LDO/USDT 15m - Nadaraya-Watson Envelope</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.1/dist/chartjs-chart-financial.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
@@ -25,18 +23,27 @@
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         const chart = new Chart(ctx, {
-            type: 'candlestick',
+            type: 'line',
             data: {
                 datasets: [
                     {
-                        label: 'LDO/USDT',
+                        label: 'Wick High',
                         data: [],
                         borderColor: '#ffffff',
-                        color: { up: '#00c4b4', down: '#ff1744' }
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        showLine: false
+                    },
+                    {
+                        label: 'Wick Low',
+                        data: [],
+                        borderColor: '#ffffff',
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        showLine: false
                     },
                     {
                         label: 'Upper Envelope',
-                        type: 'line',
                         data: [],
                         borderColor: '#00c4b4',
                         borderWidth: 1,
@@ -44,7 +51,6 @@
                     },
                     {
                         label: 'Lower Envelope',
-                        type: 'line',
                         data: [],
                         borderColor: '#ff1744',
                         borderWidth: 1,
@@ -54,6 +60,11 @@
             },
             options: {
                 responsive: true,
+                plugins: {
+                    annotation: {
+                        annotations: []
+                    }
+                },
                 scales: {
                     x: {
                         type: 'time',
@@ -96,8 +107,9 @@
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.k) {
+                const timestamp = new Date(data.k.t);
                 const candle = {
-                    x: new Date(data.k.t),
+                    x: timestamp,
                     o: parseFloat(data.k.o),
                     h: parseFloat(data.k.h),
                     l: parseFloat(data.k.l),
@@ -113,13 +125,28 @@
                     closePrices.shift();
                 }
 
+                const wicksHigh = candles.map(c => ({ x: c.x, y: c.h }));
+                const wicksLow = candles.map(c => ({ x: c.x, y: c.l }));
                 const { nwe, sae } = calculateNWE(closePrices);
                 const upper = nwe.map((v, i) => ({ x: candles[i]?.x, y: v + sae }));
                 const lower = nwe.map((v, i) => ({ x: candles[i]?.x, y: v - sae }));
 
-                chart.data.datasets[0].data = candles;
-                chart.data.datasets[1].data = upper;
-                chart.data.datasets[2].data = lower;
+                const annotations = candles.map((c, i) => ({
+                    type: 'box',
+                    xMin: c.x - 300000,
+                    xMax: c.x + 300000,
+                    yMin: Math.min(c.o, c.c),
+                    yMax: Math.max(c.o, c.c),
+                    backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
+                    borderColor: '#ffffff',
+                    borderWidth: 1
+                }));
+
+                chart.options.plugins.annotation.annotations = annotations;
+                chart.data.datasets[0].data = wicksHigh;
+                chart.data.datasets[1].data = wicksLow;
+                chart.data.datasets[2].data = upper;
+                chart.data.datasets[3].data = lower;
                 chart.update();
             }
         };
