@@ -41,132 +41,133 @@
     <div id="chartContainer"></div>
     <div id="currentPrice"></div>
     <div id="recommendation"></div>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js" onload="initChart()"></script>
     <script>
-        // Проверка загрузки LightweightCharts
-        if (typeof LightweightCharts === 'undefined') {
-            document.body.innerHTML += '<p style="color: red;">Ошибка: LightweightCharts не загружен</p>';
-            throw new Error('LightweightCharts not loaded');
-        }
-
-        const chart = LightweightCharts.createChart(document.getElementById('chartContainer'), {
-            width: 1000,
-            height: 600,
-            layout: { background: { color: '#252525' }, textColor: '#e0e0e0' },
-            grid: { vertLines: { color: 'rgba(255, 255, 255, 0.1)' }, horzLines: { color: 'rgba(255, 255, 255, 0.1)' } },
-            timeScale: { timeVisible: true, secondsVisible: false }
-        });
-
-        const candleSeries = chart.addCandlestickSeries({
-            upColor: '#00ff00', downColor: '#ff0000', borderVisible: false,
-            wickUpColor: '#00ff00', wickDownColor: '#ff0000'
-        });
-        const upperSeries = chart.addLineSeries({ color: '#00cccc', lineWidth: 2, title: 'Верхняя граница' });
-        const lowerSeries = chart.addLineSeries({ color: '#ff0000', lineWidth: 2, title: 'Нижняя граница' });
-
-        const dataStore = {
-            candleHistory: [],
-            priceHistory: [],
-            currentPrice: 0,
-            lastDirection: null,
-            directionCount: 0,
-            pendingDirection: null
-        };
-        const h = 8, mult = 3, maxHistory = 500, confirmationCount = 3;
-
-        function gauss(x, h) {
-            return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
-        }
-
-        const ws = new WebSocket('wss://stream.binance.com:9443/ws/linkusdt@aggTrade');
-
-        ws.onopen = () => console.log('Подключено к Binance WebSocket');
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const now = Math.floor(Date.now() / 1000);
-            const price = parseFloat(data.p);
-
-            dataStore.currentPrice = price;
-            const lastCandle = dataStore.candleHistory.length > 0 ? dataStore.candleHistory[dataStore.candleHistory.length - 1] : null;
-            if (!lastCandle || now - lastCandle.time >= 60) {
-                dataStore.candleHistory.push({ time: now, open: price, high: price, low: price, close: price });
-                dataStore.priceHistory.push({ time: now, price: price });
-            } else {
-                lastCandle.high = Math.max(lastCandle.high, price);
-                lastCandle.low = Math.min(lastCandle.low, price);
-                lastCandle.close = price;
-                dataStore.priceHistory[dataStore.priceHistory.length - 1] = { time: now, price: price };
+        function initChart() {
+            if (typeof LightweightCharts === 'undefined') {
+                document.body.innerHTML += '<p style="color: red;">Ошибка: LightweightCharts не загружен</p>';
+                return;
             }
 
-            if (dataStore.candleHistory.length > maxHistory) dataStore.candleHistory.shift();
-            if (dataStore.priceHistory.length > maxHistory) dataStore.priceHistory.shift();
+            const chart = LightweightCharts.createChart(document.getElementById('chartContainer'), {
+                width: 1000,
+                height: 600,
+                layout: { background: { color: '#252525' }, textColor: '#e0e0e0' },
+                grid: { vertLines: { color: 'rgba(255, 255, 255, 0.1)' }, horzLines: { color: 'rgba(255, 255, 255, 0.1)' } },
+                timeScale: { timeVisible: true, secondsVisible: false }
+            });
 
-            candleSeries.setData(dataStore.candleHistory);
+            const candleSeries = chart.addCandlestickSeries({
+                upColor: '#00ff00', downColor: '#ff0000', borderVisible: false,
+                wickUpColor: '#00ff00', wickDownColor: '#ff0000'
+            });
+            const upperSeries = chart.addLineSeries({ color: '#00cccc', lineWidth: 2, title: 'Верхняя граница' });
+            const lowerSeries = chart.addLineSeries({ color: '#ff0000', lineWidth: 2, title: 'Нижняя граница' });
 
-            const nwe = [];
-            let sae = 0;
-            const historyLength = Math.min(maxHistory, dataStore.priceHistory.length);
-            for (let i = 0; i < historyLength; i++) {
-                let sum = 0, sumw = 0;
-                for (let j = 0; j < historyLength; j++) {
-                    const w = gauss(i - j, h);
-                    sum += dataStore.priceHistory[j].price * w;
-                    sumw += w;
-                }
-                const y = sum / sumw;
-                sae += Math.abs(dataStore.priceHistory[i].price - y);
-                nwe.push({ time: dataStore.priceHistory[i].time, value: y });
+            const dataStore = {
+                candleHistory: [],
+                priceHistory: [],
+                currentPrice: 0,
+                lastDirection: null,
+                directionCount: 0,
+                pendingDirection: null
+            };
+            const h = 8, mult = 3, maxHistory = 500, confirmationCount = 3;
+
+            function gauss(x, h) {
+                return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
             }
 
-            sae = sae / historyLength * mult;
-            const upper = nwe.map(point => ({ time: point.time, value: point.value + sae }));
-            const lower = nwe.map(point => ({ time: point.time, value: point.value - sae }));
+            const ws = new WebSocket('wss://stream.binance.com:9443/ws/linkusdt@aggTrade');
 
-            upperSeries.setData(upper);
-            lowerSeries.setData(lower);
+            ws.onopen = () => console.log('Подключено к Binance WebSocket');
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const now = Math.floor(Date.now() / 1000);
+                const price = parseFloat(data.p);
 
-            document.getElementById('currentPrice').textContent = 'Текущая цена: ' + price.toFixed(2) + ' USDT';
-
-            const currentUpper = upper[upper.length - 1].value;
-            const currentLower = lower[lower.length - 1].value;
-            const recElement = document.getElementById('recommendation');
-
-            if (price > currentUpper && dataStore.lastDirection !== 'short') {
-                dataStore.pendingDirection = 'short';
-                dataStore.directionCount = (dataStore.directionCount || 0) + 1;
-                if (dataStore.directionCount >= confirmationCount) {
-                    dataStore.lastDirection = 'short';
-                    recElement.innerHTML = 'Шорт: Пробой вверх на ' + price.toFixed(2);
-                    recElement.className = 'short';
+                dataStore.currentPrice = price;
+                const lastCandle = dataStore.candleHistory.length > 0 ? dataStore.candleHistory[dataStore.candleHistory.length - 1] : null;
+                if (!lastCandle || now - lastCandle.time >= 60) {
+                    dataStore.candleHistory.push({ time: now, open: price, high: price, low: price, close: price });
+                    dataStore.priceHistory.push({ time: now, price: price });
+                } else {
+                    lastCandle.high = Math.max(lastCandle.high, price);
+                    lastCandle.low = Math.min(lastCandle.low, price);
+                    lastCandle.close = price;
+                    dataStore.priceHistory[dataStore.priceHistory.length - 1] = { time: now, price: price };
                 }
-            } else if (price < currentLower && dataStore.lastDirection !== 'long') {
-                dataStore.pendingDirection = 'long';
-                dataStore.directionCount = (dataStore.directionCount || 0) + 1;
-                if (dataStore.directionCount >= confirmationCount) {
-                    dataStore.lastDirection = 'long';
-                    recElement.innerHTML = 'Лонг: Пробой вниз на ' + price.toFixed(2);
-                    recElement.className = 'long';
+
+                if (dataStore.candleHistory.length > maxHistory) dataStore.candleHistory.shift();
+                if (dataStore.priceHistory.length > maxHistory) dataStore.priceHistory.shift();
+
+                candleSeries.setData(dataStore.candleHistory);
+
+                const nwe = [];
+                let sae = 0;
+                const historyLength = Math.min(maxHistory, dataStore.priceHistory.length);
+                for (let i = 0; i < historyLength; i++) {
+                    let sum = 0, sumw = 0;
+                    for (let j = 0; j < historyLength; j++) {
+                        const w = gauss(i - j, h);
+                        sum += dataStore.priceHistory[j].price * w;
+                        sumw += w;
+                    }
+                    const y = sum / sumw;
+                    sae += Math.abs(dataStore.priceHistory[i].price - y);
+                    nwe.push({ time: dataStore.priceHistory[i].time, value: y });
                 }
-            } else if (price >= currentLower && price <= currentUpper) {
-                dataStore.directionCount = 0;
-                dataStore.pendingDirection = null;
-                recElement.innerHTML = 'Ожидание сигнала';
-                recElement.className = '';
+
+                sae = sae / historyLength * mult;
+                const upper = nwe.map(point => ({ time: point.time, value: point.value + sae }));
+                const lower = nwe.map(point => ({ time: point.time, value: point.value - sae }));
+
+                upperSeries.setData(upper);
+                lowerSeries.setData(lower);
+
+                document.getElementById('currentPrice').textContent = 'Текущая цена: ' + price.toFixed(2) + ' USDT';
+
+                const currentUpper = upper[upper.length - 1].value;
+                const currentLower = lower[lower.length - 1].value;
+                const recElement = document.getElementById('recommendation');
+
+                if (price > currentUpper && dataStore.lastDirection !== 'short') {
+                    dataStore.pendingDirection = 'short';
+                    dataStore.directionCount = (dataStore.directionCount || 0) + 1;
+                    if (dataStore.directionCount >= confirmationCount) {
+                        dataStore.lastDirection = 'short';
+                        recElement.innerHTML = 'Шорт: Пробой вверх на ' + price.toFixed(2);
+                        recElement.className = 'short';
+                    }
+                } else if (price < currentLower && dataStore.lastDirection !== 'long') {
+                    dataStore.pendingDirection = 'long';
+                    dataStore.directionCount = (dataStore.directionCount || 0) + 1;
+                    if (dataStore.directionCount >= confirmationCount) {
+                        dataStore.lastDirection = 'long';
+                        recElement.innerHTML = 'Лонг: Пробой вниз на ' + price.toFixed(2);
+                        recElement.className = 'long';
+                    }
+                } else if (price >= currentLower && price <= currentUpper) {
+                    dataStore.directionCount = 0;
+                    dataStore.pendingDirection = null;
+                    recElement.innerHTML = 'Ожидание сигнала';
+                    recElement.className = '';
+                }
+
+                chart.timeScale().fitContent();
+            };
+
+            ws.onerror = (error) => console.error('WebSocket error:', error);
+
+            function keepAlive() {
+                fetch(window.location.href, { mode: 'no-cors' })
+                    .then(() => console.log('Пинг выполнен'))
+                    .catch(err => console.error('Ошибка пинга:', err));
             }
 
-            chart.timeScale().fitContent();
-        };
-
-        ws.onerror = (error) => console.error('WebSocket error:', error);
-
-        function keepAlive() {
-            fetch(window.location.href, { mode: 'no-cors' })
-                .then(() => console.log('Пинг выполнен'))
-                .catch(err => console.error('Ошибка пинга:', err));
+            setInterval(keepAlive, 300000);
+            keepAlive();
         }
-
-        setInterval(keepAlive, 300000);
-        keepAlive();
     </script>
 </body>
 </html>
