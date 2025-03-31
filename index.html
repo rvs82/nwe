@@ -41,9 +41,10 @@
     <div id="chartContainer"></div>
     <div id="currentPrice"></div>
     <div id="recommendation"></div>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js" onload="initChart()"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script>
-        function initChart() {
+        // Ждем загрузки страницы, чтобы убедиться, что LightweightCharts доступен
+        window.addEventListener('load', () => {
             if (typeof LightweightCharts === 'undefined') {
                 document.body.innerHTML += '<p style="color: red;">Ошибка: LightweightCharts не загружен</p>';
                 return;
@@ -128,7 +129,7 @@
                 document.getElementById('currentPrice').textContent = 'Текущая цена: ' + price.toFixed(2) + ' USDT';
 
                 const currentUpper = upper[upper.length - 1].value;
-                const currentLower = lower[lower.length - 1].value;
+                const currentLower = lower[upper.length - 1].value;
                 const recElement = document.getElementById('recommendation');
 
                 if (price > currentUpper && dataStore.lastDirection !== 'short') {
@@ -167,7 +168,7 @@
 
             setInterval(keepAlive, 300000);
             keepAlive();
-        }
+        });
     </script>
 </body>
 </html>
