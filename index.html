@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex"> <!-- Закрываем сайт от индексации -->
+    <meta name="robots" content="noindex">
     <title>LDO/USDT 15m - Nadaraya-Watson Envelope</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -103,7 +103,7 @@
                     zoom: {
                         pan: {
                             enabled: true,
-                            mode: 'xy' // Включаем перетаскивание по X и Y
+                            mode: 'xy'
                         },
                         zoom: {
                             wheel: {
@@ -124,12 +124,7 @@
                         ticks: {
                             source: 'auto'
                         },
-                        bounds: 'data',
-                        // Добавляем отступ справа на 10 баров (10 * 15 минут = 900000 мс)
-                        max: () => {
-                            const lastCandleTime = candles.length > 0 ? candles[candles.length - 1].x.getTime() : Date.now();
-                            return lastCandleTime + 900000; // 10 баров по 15 минут
-                        }
+                        bounds: 'data'
                     },
                     y: {
                         title: { display: true, text: 'Price (USDT)' },
@@ -313,14 +308,19 @@
                     yMin: lastPrice,
                     yMax: lastPrice,
                     content: lastPrice.toFixed(4),
-                    backgroundColor: 'transparent', // Прозрачный фон, чтобы не перекрывать шкалу
+                    backgroundColor: 'transparent',
                     color: '#ffffff',
                     position: 'end',
-                    xAdjust: 70, // Отступ от края графика
+                    xAdjust: 70,
                     yAdjust: 0,
                     font: { size: 12 }
                 });
             }
+
+            // Устанавливаем max для оси X после инициализации candles
+            chart.options.scales.x.max = displayCandles.length > 0
+                ? displayCandles[displayCandles.length - 1].x.getTime() + 900000 // 10 баров по 15 минут
+                : Date.now();
 
             chart.options.plugins.annotation.annotations = annotations;
             chart.data.datasets[0].data = upperWicks;
