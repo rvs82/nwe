@@ -22,8 +22,8 @@
 
     <script>
         const h = 8;
-        const mult = 2.89;
-        const mult2 = 1.7;
+        const mult = 2.89;  // Широкий канал
+        const mult2 = 1.7;  // Узкий канал
         const repaint = true;
         const maxCandles = 126;
         const maxCalcCandles = 500;
@@ -35,11 +35,11 @@
                 datasets: [
                     { label: 'Upper Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Lower Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Upper Envelope', data: [], borderColor: '#00c4b4', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Lower Envelope', data: [], borderColor: '#ff1744', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Middle Envelope', data: [], borderColor: '#b8860b', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Upper Envelope 1.7', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Lower Envelope 1.7', data: [], borderColor: '#ff00ff', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Upper Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false }, // Зеленый широкий
+                    { label: 'Lower Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false }, // Зеленый широкий
+                    { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },     // Серый средний
+                    { label: 'Upper Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false }, // Желтый узкий
+                    { label: 'Lower Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false }, // Желтый узкий
                     { label: 'EMA 100', data: [], borderColor: '#d873f6', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'EMA 200', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] }
