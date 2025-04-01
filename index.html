@@ -45,8 +45,8 @@
             type: 'line',
             data: {
                 datasets: [
-                    { label: 'Upper Wick', data: [], borderColor: '#ff9800', borderWidth: 1, pointRadius: 0, fill: false }, // Растущие фитили
-                    { label: 'Lower Wick', data: [], borderColor: '#90bff9', borderWidth: 1, pointRadius: 0, fill: false }, // Падающие фитили
+                    { label: 'Upper Wick', data: [], borderColor: '#ff9800', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Lower Wick', data: [], borderColor: '#90bff9', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Upper Envelope Wide', data: [], borderColor: '#4caf50', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Lower Envelope Wide', data: [], borderColor: '#4caf50', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },
@@ -63,9 +63,18 @@
                 plugins: { legend: { display: false }, annotation: { annotations: [] } },
                 scales: {
                     x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
-                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); }, padding: 50 } }
+                    y: { 
+                        title: { display: true, text: 'Price (USDT)' }, 
+                        position: 'right', 
+                        grid: { color: '#333333' }, 
+                        ticks: { 
+                            color: '#ffffff', 
+                            callback: function(value) { return value.toFixed(4); }, 
+                            padding: 50 // Отступ только между графиком и шкалой
+                        } 
+                    }
                 },
-                layout: { padding: { right: 100 } }, // Увеличен отступ справа
+                layout: { padding: { right: 0 } }, // Убрано лишнее
                 backgroundColor: '#000000'
             }
         });
@@ -140,11 +149,11 @@
                     size: tradeSize,
                     startTime: Date.now()
                 };
-                const tradeColor = type === 'long' ? '#00ff00' : '#ff0000'; // Зеленый для лонга, красный для шорта
+                const tradeColor = type === 'long' ? '#00ff00' : '#ff0000';
                 tradeAnnotations.push({
                     type: 'line',
-                    xMin: time.getTime() - 24*60*60*1000, // На сутки назад для видимости
-                    xMax: time.getTime() + 24*60*60*1000, // На сутки вперед
+                    xMin: time.getTime() - 24*60*60*1000,
+                    xMax: time.getTime() + 24*60*60*1000,
                     yMin: price,
                     yMax: price,
                     borderColor: '#f23645',
@@ -309,7 +318,7 @@
             const upperWicks = [];
             const lowerWicks = [];
             displayCandles.forEach(c => {
-                const wickColor = c.o <= c.c ? '#ff9800' : '#90bff9'; // Растущие - оранжевый, падающие - голубой
+                const wickColor = c.o <= c.c ? '#ff9800' : '#90bff9';
                 if (c.h > Math.max(c.o, c.c)) {
                     upperWicks.push({ x: c.x, y: c.h });
                     upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
@@ -342,8 +351,8 @@
                 xMax: c.x.getTime() + 300000,
                 yMin: Math.min(c.o, c.c),
                 yMax: Math.max(c.o, c.c),
-                backgroundColor: 'rgba(0, 0, 0, 0)', // Пустые свечи
-                borderColor: c.o <= c.c ? '#ff9800' : '#90bff9', // Растущие - оранжевый, падающие - голубой
+                backgroundColor: 'rgba(0, 0, 0, 0)',
+                borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
                 borderWidth: 1
             })).concat(tradeAnnotations);
 
