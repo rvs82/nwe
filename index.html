@@ -8,7 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
@@ -99,21 +98,6 @@
                 plugins: {
                     annotation: {
                         annotations: []
-                    },
-                    zoom: {
-                        pan: {
-                            enabled: true,
-                            mode: 'xy'
-                        },
-                        zoom: {
-                            wheel: {
-                                enabled: true
-                            },
-                            pinch: {
-                                enabled: true
-                            },
-                            mode: 'xy'
-                        }
                     }
                 },
                 scales: {
@@ -255,8 +239,8 @@
         function updateChart() {
             console.log("Candles updated:", candles.length);
 
-            const displayCandles = candles;
-            const displayClosePrices = closePrices;
+            const displayCandles = candles.slice(-maxCandles);
+            const displayClosePrices = closePrices.slice(-maxCandles);
 
             const upperWicks = [];
             const lowerWicks = [];
@@ -275,12 +259,12 @@
             });
 
             const { nwe, sae } = calculateNWE(closePrices);
-            const displayNwe = nwe;
+            const displayNwe = nwe.slice(-maxCandles);
             const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
             const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
 
-            const ema100 = calculateEMA(closePrices, 100);
-            const ema200 = calculateEMA(closePrices, 200);
+            const ema100 = calculateEMA(closePrices, 100).slice(-maxCandles);
+            const ema200 = calculateEMA(closePrices, 200).slice(-maxCandles);
             const ema100Data = ema100.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
             const ema200Data = ema200.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
 
@@ -317,9 +301,8 @@
                 });
             }
 
-            // Устанавливаем max для оси X после инициализации candles
             chart.options.scales.x.max = displayCandles.length > 0
-                ? displayCandles[displayCandles.length - 1].x.getTime() + 900000 // 10 баров по 15 минут
+                ? displayCandles[displayCandles.length - 1].x.getTime() + 900000
                 : Date.now();
 
             chart.options.plugins.annotation.annotations = annotations;
