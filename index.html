@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
@@ -98,13 +99,37 @@
                 plugins: {
                     annotation: {
                         annotations: []
+                    },
+                    zoom: {
+                        pan: {
+                            enabled: true,
+                            mode: 'xy' // Включаем перетаскивание по X и Y
+                        },
+                        zoom: {
+                            wheel: {
+                                enabled: true
+                            },
+                            pinch: {
+                                enabled: true
+                            },
+                            mode: 'xy'
+                        }
                     }
                 },
                 scales: {
                     x: {
                         type: 'time',
                         time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
-                        title: { display: true, text: 'Time' }
+                        title: { display: true, text: 'Time' },
+                        ticks: {
+                            source: 'auto'
+                        },
+                        bounds: 'data',
+                        // Добавляем отступ справа на 10 баров (10 * 15 минут = 900000 мс)
+                        max: () => {
+                            const lastCandleTime = candles.length > 0 ? candles[candles.length - 1].x.getTime() : Date.now();
+                            return lastCandleTime + 900000; // 10 баров по 15 минут
+                        }
                     },
                     y: {
                         title: { display: true, text: 'Price (USDT)' },
@@ -235,8 +260,8 @@
         function updateChart() {
             console.log("Candles updated:", candles.length);
 
-            const displayCandles = candles.slice(-maxCandles);
-            const displayClosePrices = closePrices.slice(-maxCandles);
+            const displayCandles = candles;
+            const displayClosePrices = closePrices;
 
             const upperWicks = [];
             const lowerWicks = [];
@@ -255,12 +280,12 @@
             });
 
             const { nwe, sae } = calculateNWE(closePrices);
-            const displayNwe = nwe.slice(-maxCandles);
+            const displayNwe = nwe;
             const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
             const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
 
-            const ema100 = calculateEMA(closePrices, 100).slice(-maxCandles);
-            const ema200 = calculateEMA(closePrices, 200).slice(-maxCandles);
+            const ema100 = calculateEMA(closePrices, 100);
+            const ema200 = calculateEMA(closePrices, 200);
             const ema100Data = ema100.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
             const ema200Data = ema200.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
 
@@ -288,10 +313,10 @@
                     yMin: lastPrice,
                     yMax: lastPrice,
                     content: lastPrice.toFixed(4),
-                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                    color: '#000000',
+                    backgroundColor: 'transparent', // Прозрачный фон, чтобы не перекрывать шкалу
+                    color: '#ffffff',
                     position: 'end',
-                    xAdjust: 50, // Отступ от края графика, чтобы не перекрывать свечи
+                    xAdjust: 70, // Отступ от края графика
                     yAdjust: 0,
                     font: { size: 12 }
                 });
