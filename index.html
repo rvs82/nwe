@@ -4,14 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex">
-    <title>LDO/USDT 15m - Nadaraya-Watson Envelope</title>
+    <title>LDO/USDT - Nadaraya-Watson Envelope</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <style>
-        body { background-color: #000000; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        body { background-color: #000000; color: white; font-family: Arial, sans-serif; margin: 0; padding: 5px 20px 20px; }
         canvas { max-width: 100%; }
+        #tradeAlert { 
+            display: none; 
+            background-color: #333; 
+            border: 2px solid #00ff00; 
+            padding: 10px; 
+            text-align: center; 
+            font-size: 16px; 
+            margin-bottom: 10px; 
+        }
         #infoBar { text-align: center; font-size: 16px; margin: 10px 0; }
         #tradeLog, #aiSection { 
             max-height: 150px; 
@@ -24,29 +33,38 @@
         }
         #aiSection { max-height: 300px; }
         h2 { font-size: 18px; margin: 10px 0 5px; }
+        #aiRecommendations { color: #cccccc; }
     </style>
 </head>
 <body>
+    <div id="tradeAlert"></div>
     <canvas id="priceChart"></canvas>
     <div id="infoBar">
         <span id="currentPrice">Текущая цена: N/A</span> | 
         <span id="stats">Открыто: 0 | Сделок: 0 | Прибыль: 0 USDT</span> | 
-        <label><input type="checkbox" id="muteSound" checked> Звук</label>
+        <label><input type="checkbox" id="muteSound" checked> Звук</label> | 
+        <select id="timeframe">
+            <option value="15m" selected>15m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+        </select>
     </div>
     <div id="tradeLog"><h2>Сделки</h2></div>
     <div id="aiSection"><h2>ИИ</h2><div id="aiAnalysis"></div><h2>Рекомендации</h2><div id="aiRecommendations"></div></div>
 
     <script>
         const h = 8;
-        const mult = 2.89;
-        const mult2 = 1.7;
+        let mult = 2.89;
+        let mult2 = 1.7;
         const maxCandles = 126;
         const maxCalcCandles = 500;
         const tradeSize = 100;
         const commissionRate = 0.0004;
+        let timeframe = '15m';
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
+        const alertSound = new Audio('https://www.soundjay.com/buttons/beep-08b.mp3');
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         const chart = new Chart(ctx, {
@@ -133,8 +151,32 @@
             return ema;
         }
 
+        function calculateRSI(prices, period = 14) {
+            if (prices.length < period) return [];
+            const rsi = [];
+            let gains = 0, losses = 0;
+            for (let i = 1; i <= period; i++) {
+                const diff = prices[i] - prices[i - 1];
+                if (diff > 0) gains += diff;
+                else losses -= diff;
+            }
+            let avgGain = gains / period;
+            let avgLoss = losses / period;
+            rsi.push(100 - (100 / (1 + (avgGain / avgLoss))));
+            for (let i = period + 1; i < prices.length; i++) {
+                const diff = prices[i] - prices[i - 1];
+                const gain = diff > 0 ? diff : 0;
+                const loss = diff < 0 ? -diff : 0;
+                avgGain = (avgGain * (period - 1) + gain) / period;
+                avgLoss = (avgLoss * (period - 1) + loss) / period;
+                rsi.push(100 - (100 / (1 + (avgGain / avgLoss))));
+            }
+            return rsi;
+        }
+
         const candles = [];
         const closePrices = [];
+        const volumes = [];
         let lastPrice = null;
         let lastPriceTime = null;
         let activeTrade = null;
@@ -142,16 +184,17 @@
         const tradeAnnotations = [];
         let aiEntryPoint = null;
         let aiExitPoint = null;
+        let fearGreedIndex = null;
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
-                if (!activeTrade && aiEntryPoint && aiExitPoint) {
-                    if (aiEntryPoint.type === 'long' && price <= aiEntryPoint.price) {
-                        this.openTrade('long', price, time, aiExitPoint.price);
-                    } else if (aiEntryPoint.type === 'short' && price >= aiEntryPoint.price) {
-                        this.openTrade('short', price, time, aiExitPoint.price);
+                if (!activeTrade) {
+                    if (price <= lowerWide) {
+                        this.openTrade('long', price, time, upperNarrow);
+                    } else if (price >= upperWide) {
+                        this.openTrade('short', price, time, lowerNarrow);
                     }
-                } else if (activeTrade) {
+                } else {
                     this.updateTakeProfit(time, lowerNarrow, upperNarrow);
                     this.checkCloseTrade(price);
                     this.updateTradeInfo();
@@ -197,7 +240,7 @@
             }
 
             updateTakeProfit(time, lowerNarrow, upperNarrow) {
-                const tp = activeTrade.type === 'long' ? aiExitPoint.price : aiExitPoint.price;
+                const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
                 const minTime = candles.length > 0 ? candles[0].x.getTime() : time.getTime() - 15*60*1000;
@@ -287,13 +330,16 @@
             constructor() {
                 this.model = this.createModel();
                 this.isTrained = false;
+                this.orderBook = { bids: [], asks: [] };
+                this.bestEntry = null;
+                this.bestExit = null;
             }
 
             createModel() {
                 const model = tf.sequential();
-                model.add(tf.layers.lstm({ units: 50, inputShape: [20, 3], returnSequences: true }));
+                model.add(tf.layers.lstm({ units: 50, inputShape: [20, 5], returnSequences: true }));
                 model.add(tf.layers.lstm({ units: 50 }));
-                model.add(tf.layers.dense({ units: 2, activation: 'softmax' })); // 2 выхода: лонг/шорт
+                model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
                 model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
                 return model;
             }
@@ -305,21 +351,25 @@
                 const xs = [];
                 const ys = [];
                 const { nwe: nweWide } = calculateNWE(closePrices, mult);
-                const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices, mult2);
+                const { nwe: nweNarrow } = calculateNWE(closePrices, mult2);
                 const ema100 = calculateEMA(closePrices, 100);
+                const rsi = calculateRSI(closePrices);
 
                 for (let i = lookback; i < closePrices.length - 1; i++) {
                     const input = [];
                     for (let j = i - lookback; j < i; j++) {
                         input.push([
                             closePrices[j],
-                            nweWide[j] - closePrices[j], // Отклонение от широкого канала
-                            ema100[j] - closePrices[j]   // Отклонение от EMA
+                            nweWide[j] - closePrices[j],
+                            ema100[j] - closePrices[j],
+                            volumes[j] || 0,
+                            rsi[j - 14] || 50
                         ]);
                     }
-                    const profit = tradeHistory.find(t => Math.abs(new Date(t.openTime) - new Date(candles[i].x)) < 15*60*1000)?.profit || 0;
+                    const trade = tradeHistory.find(t => Math.abs(new Date(t.openTime) - new Date(candles[i].x)) < 15*60*1000);
+                    const profit = trade ? trade.profit : 0;
                     xs.push(input);
-                    ys.push(profit > 0 && tradeHistory.some(t => t.type === 'long' && Math.abs(new Date(t.openTime) - new Date(candles[i].x)) < 15*60*1000) ? [1, 0] : [0, 1]);
+                    ys.push(profit > 0 && trade && trade.type === 'long' ? [1, 0] : [0, 1]);
                 }
 
                 if (xs.length < 5) return;
@@ -328,7 +378,7 @@
                 const ysTensor = tf.tensor2d(ys);
 
                 await this.model.fit(xsTensor, ysTensor, {
-                    epochs: 100,
+                    epochs: 200,
                     batchSize: 32,
                     callbacks: {
                         onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`)
@@ -339,19 +389,23 @@
                 tf.dispose([xsTensor, ysTensor]);
             }
 
-            async predictEntryExit() {
+            async predictOptimalPoints() {
                 if (!this.isTrained || closePrices.length < 20) return null;
 
                 const lookback = 20;
                 const { nwe: nweWide } = calculateNWE(closePrices, mult);
                 const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices, mult2);
                 const ema100 = calculateEMA(closePrices, 100);
+                const ema200 = calculateEMA(closePrices, 200);
+                const rsi = calculateRSI(closePrices);
                 const input = [];
                 for (let i = closePrices.length - lookback; i < closePrices.length; i++) {
                     input.push([
                         closePrices[i],
                         nweWide[i] - closePrices[i],
-                        ema100[i] - closePrices[i]
+                        ema100[i] - closePrices[i],
+                        volumes[i] || 0,
+                        rsi[i - 14] || 50
                     ]);
                 }
 
@@ -366,20 +420,26 @@
                 const middle = nweNarrow[nweNarrow.length - 1];
                 const upperNarrow = middle + saeNarrow;
                 const lowerNarrow = middle - saeNarrow;
+                const upperWide = middle + calculateNWE(closePrices, mult).sae;
+                const lowerWide = middle - calculateNWE(closePrices, mult).sae;
                 const ema100Last = ema100[ema100.length - 1];
-                const ema200Last = calculateEMA(closePrices, 200)[closePrices.length - 1];
+                const ema200Last = ema200[ema200.length - 1];
+                const rsiLast = rsi[rsi.length - 1];
+                const avgVolume = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
 
-                // Строгая проверка сигнала
-                if (longProb > 0.7 && ema100Last > ema200Last && lastPrice < middle) {
-                    return {
-                        entry: { type: 'long', price: lowerNarrow, time: new Date() },
-                        exit: { type: 'long', price: upperNarrow, time: new Date() }
-                    };
-                } else if (shortProb > 0.7 && ema100Last < ema200Last && lastPrice > middle) {
-                    return {
-                        entry: { type: 'short', price: upperNarrow, time: new Date() },
-                        exit: { type: 'short', price: lowerNarrow, time: new Date() }
-                    };
+                let entry = null, exit = null;
+                if (longProb > shortProb && ema100Last > ema200Last && lastPrice < middle && volumes[volumes.length - 1] > avgVolume) {
+                    entry = { type: 'long', price: lowerWide * 0.995, time: new Date() }; // Сдвиг для лучшей цены
+                    exit = { type: 'long', price: upperNarrow * 1.005, time: new Date() };
+                } else if (shortProb > longProb && ema100Last < ema200Last && lastPrice > middle && volumes[volumes.length - 1] > avgVolume) {
+                    entry = { type: 'short', price: upperWide * 1.005, time: new Date() };
+                    exit = { type: 'short', price: lowerNarrow * 0.995, time: new Date() };
+                }
+
+                if (entry && exit) {
+                    this.bestEntry = entry;
+                    this.bestExit = exit;
+                    return { entry, exit };
                 }
                 return null;
             }
@@ -394,43 +454,67 @@
                 const { sae: sae2 } = calculateNWE(closePrices, mult2);
                 const ema100 = calculateEMA(closePrices, 100);
                 const ema200 = calculateEMA(closePrices, 200);
+                const rsi = calculateRSI(closePrices);
                 const middle = nwe[nwe.length - 1];
                 const upperWide = middle + calculateNWE(closePrices, mult).sae;
                 const lowerWide = middle - calculateNWE(closePrices, mult).sae;
                 const upperNarrow = middle + sae2;
                 const lowerNarrow = middle - sae2;
 
-                analysis.push("Текущий таймфрейм — 15 минут. Это короткий период, который позволяет ловить быстрые движения, но требует осторожности из-за рыночного шума.");
-                analysis.push(`Цена сейчас около ${lastPrice}. Она находится между широким каналом с границами около ${lowerWide} и ${upperWide}, и узким каналом с уровнями ${lowerNarrow} и ${upperNarrow}.`);
+                analysis.push(`Текущий таймфрейм — ${timeframe}. Это ${timeframe === '15m' ? 'короткий период для быстрых движений' : 'более широкий масштаб для анализа трендов'}.`);
+                analysis.push(`Цена сейчас около ${lastPrice}. Она движется между широким каналом (${lowerWide} - ${upperWide}) и узким (${lowerNarrow} - ${upperNarrow}).`);
                 
                 if (lastPrice > middle) {
-                    analysis.push("Цена выше средней линии, что намекает на бычьи настроения. Но если она близко к верхней границе, это может быть признаком перекупленности.");
+                    analysis.push("Цена выше средней линии, рынок выглядит бычьим. Это может быть хорошая зона для шорта, если вы следуете системе.");
                 } else {
-                    analysis.push("Цена ниже средней, возможно, рынок склоняется к медвежьему настроению. Близость к нижней границе узкого канала может быть зоной разворота.");
+                    analysis.push("Цена ниже средней, возможен медвежий настрой. Лонг с нижней границы канала может быть интересен.");
                 }
 
                 const ema100Last = ema100[ema100.length - 1];
                 const ema200Last = ema200[ema200.length - 1];
                 if (ema100Last > ema200Last) {
-                    analysis.push("EMA 100 выше EMA 200 — это сигнал долгосрочного роста. Лонги могут быть в приоритете, но следите за откатами.");
+                    analysis.push("EMA 100 выше EMA 200 — общий тренд восходящий. Лонги по системе могут быть усилены этим фактором.");
                 } else {
-                    analysis.push("EMA 100 ниже EMA 200 — тренд скорее нисходящий. Шорты выглядят интереснее, но локальные развороты возможны.");
+                    analysis.push("EMA 100 ниже EMA 200 — тренд нисходящий. Шорты по системе выглядят логично.");
                 }
 
-                const signal = await this.predictEntryExit();
-                if (signal) {
-                    analysis.push(`Модель рекомендует ${signal.entry.type === 'long' ? 'лонг' : 'шорт'}. Точка входа около ${signal.entry.price}, выход около ${signal.exit.price}. Это основано на анализе цен, каналов и EMA.`);
-                    aiEntryPoint = signal.entry;
-                    aiExitPoint = signal.exit;
+                const rsiLast = rsi[rsi.length - 1];
+                if (rsiLast < 25) {
+                    analysis.push("RSI ниже 25 — рынок перепродан. Это может усилить сигнал на лонг, но ждите подтверждения.");
+                } else if (rsiLast > 75) {
+                    analysis.push("RSI выше 75 — рынок перекуплен. Шорт может быть усилен, но нужен дополнительный сигнал.");
                 } else {
-                    analysis.push("Сейчас четкого сигнала нет. Модель ждет более уверенных условий для входа.");
-                    aiEntryPoint = null;
-                    aiExitPoint = null;
+                    analysis.push("RSI в нейтральной зоне, пока не дает четких подсказок.");
+                }
+
+                const signal = await this.predictOptimalPoints();
+                if (signal) {
+                    analysis.push(`Модель предлагает улучшенные точки: ${signal.entry.type === 'long' ? 'лонг' : 'шорт'}. Вход около ${signal.entry.price.toFixed(4)}, выход около ${signal.exit.price.toFixed(4)}. Это может дать больше прибыли, чем стандартная система.`);
+                    document.getElementById('tradeAlert').style.display = 'block';
+                    document.getElementById('tradeAlert').innerHTML = `Рекомендация ИИ: ${signal.entry.type.toUpperCase()} | Вход: ${signal.entry.price.toFixed(4)} | Выход: ${signal.exit.price.toFixed(4)}`;
+                    if (document.getElementById('muteSound').checked) alertSound.play();
+                } else {
+                    analysis.push("Сейчас нет четких рекомендаций для улучшения точек входа/выхода. Следуйте вашей системе.");
+                    document.getElementById('tradeAlert').style.display = 'none';
+                }
+
+                if (fearGreedIndex) {
+                    analysis.push(`Индекс страха и жадности: ${fearGreedIndex.value}. ${fearGreedIndex.value < 30 ? 'Рынок напуган, это может быть зона покупки.' : fearGreedIndex.value > 70 ? 'Жадность высока, возможна коррекция.' : 'Настроения сбалансированы.'}`);
+                }
+
+                if (this.orderBook.bids.length > 0) {
+                    const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                    const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                    analysis.push(`Стакан: поддержка покупателей ${bidDepth.toFixed(2)} USDT, давление продавцов ${askDepth.toFixed(2)} USDT. ${bidDepth > askDepth ? 'Больше покупок.' : 'Больше продаж.'}`);
                 }
 
                 if (tradeHistory.length > 0) {
                     const profitableTrades = tradeHistory.filter(t => t.profit > 0).length;
-                    analysis.push(`Из всех сделок (${tradeHistory.length}) прибыльных было ${profitableTrades}. Стратегия работает, но точность можно улучшить с помощью модели.`);
+                    const lossTrades = tradeHistory.filter(t => t.profit <= 0);
+                    analysis.push(`Из ${tradeHistory.length} сделок прибыльных ${profitableTrades}. Процент успеха: ${(profitableTrades / tradeHistory.length * 100).toFixed(1)}%.`);
+                    if (lossTrades.length > 0) {
+                        analysis.push("Анализ убыточных сделок показывает, что они часто происходят при низких объемах или в зонах консолидации. Рекомендую усилить фильтры.");
+                    }
                 }
 
                 return analysis.join('<br>');
@@ -438,37 +522,39 @@
 
             provideRecommendations() {
                 const recommendations = [];
-                recommendations.push("Добавьте фильтр объемов через WebSocket (@kline с volume) для подтверждения сигналов.");
-                recommendations.push("Подключите API стакана (wss://stream.binance.com:9443/ws/ldousdt@depth) для анализа уровней ликвидности.");
-                recommendations.push("Добавьте выбор таймфреймов (1h, 4h) для более широкого анализа.");
-                recommendations.push("Прошу данные о настроениях (Crypto Fear & Greed Index) для учета эмоций рынка.");
-                recommendations.push("Увеличьте входные данные модели: добавьте объемы, RSI. Увеличьте эпохи до 200.");
+                const avgVolume = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
+                if (tradeHistory.length > 0 && tradeHistory.filter(t => t.profit <= 0).length > 0) {
+                    recommendations.push("Убыточные сделки часто связаны с низкими объемами. Попробуйте входить только при объеме выше " + (avgVolume * 1.2).toFixed(2) + " USDT.");
+                }
+                recommendations.push("Добавьте фильтр по стакану: входите, если глубина в нужную сторону больше " + (this.orderBook.bids.reduce((s, [_, v]) => s + parseFloat(v), 0) || 1000) + " USDT.");
+                recommendations.push("RSI ниже 25 или выше 75 может быть подсказкой для усиления сигнала, но не основой.");
+                recommendations.push("Для 100% прибыльности попробуйте сдвигать точки входа на 0.5% от канала и увеличивать тейк-профит до 2% от средней линии.");
                 return recommendations.join('<br>');
             }
 
             async trainAndUpdate() {
                 await this.trainModel();
-                const signal = await this.predictEntryExit();
+                const signal = await this.predictOptimalPoints();
                 if (signal) {
-                    aiEntryPoint = signal.entry;
-                    aiExitPoint = signal.exit;
+                    this.bestEntry = signal.entry;
+                    this.bestExit = signal.exit;
                     tradeAnnotations.push({
                         type: 'point',
-                        xValue: aiEntryPoint.time,
-                        yValue: aiEntryPoint.price,
-                        backgroundColor: aiEntryPoint.type === 'long' ? '#00ff00' : '#ff0000',
+                        xValue: signal.entry.time,
+                        yValue: signal.entry.price,
+                        backgroundColor: signal.entry.type === 'long' ? '#00ff00' : '#ff0000',
                         borderColor: '#ffffff',
                         radius: 6,
-                        label: { content: 'Вход (ИИ)', enabled: true, position: 'top' }
+                        label: { content: 'Лучший вход (ИИ)', enabled: true, position: 'top' }
                     });
                     tradeAnnotations.push({
                         type: 'point',
-                        xValue: aiExitPoint.time,
-                        yValue: aiExitPoint.price,
+                        xValue: signal.exit.time,
+                        yValue: signal.exit.price,
                         backgroundColor: '#00c108',
                         borderColor: '#ffffff',
                         radius: 6,
-                        label: { content: 'Выход (ИИ)', enabled: true, position: 'top' }
+                        label: { content: 'Лучший выход (ИИ)', enabled: true, position: 'top' }
                     });
                 }
                 document.getElementById('aiAnalysis').innerHTML = await this.analyzeMarket();
@@ -497,11 +583,13 @@
             log.scrollTop = 0;
         }
 
-        const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
+        let wsKline = new WebSocket(`wss://stream.binance.com:9443/ws/ldousdt@kline_${timeframe}`);
         const wsTrade = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@aggTrade');
+        const wsDepth = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@depth10');
 
         wsKline.onopen = () => console.log("Kline WebSocket connection opened");
         wsTrade.onopen = () => console.log("Trade WebSocket connection opened");
+        wsDepth.onopen = () => console.log("Depth WebSocket connection opened");
 
         wsKline.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -511,18 +599,22 @@
                 const high = parseFloat(data.k.h);
                 const low = parseFloat(data.k.l);
                 const close = parseFloat(data.k.c);
+                const volume = parseFloat(data.k.v);
 
-                if (Tx.length > 0 && candles[candles.length - 1].x.getTime() === timestamp.getTime()) {
+                if (candles.length > 0 && candles[candles.length - 1].x.getTime() === timestamp.getTime()) {
                     candles[candles.length - 1] = { x: timestamp, o: open, h: high, l: low, c: close };
                     closePrices[closePrices.length - 1] = close;
+                    volumes[volumes.length - 1] = volume;
                 } else {
                     candles.push({ x: timestamp, o: open, h: high, l: low, c: close });
                     closePrices.push(close);
+                    volumes.push(volume);
                 }
 
                 if (candles.length > maxCalcCandles) {
                     candles.shift();
                     closePrices.shift();
+                    volumes.shift();
                 }
                 updateChart();
                 aiAnalyst.trainAndUpdate();
@@ -539,98 +631,51 @@
             }
         };
 
+        wsDepth.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.bids && data.asks) {
+                aiAnalyst.orderBook = { bids: data.bids, asks: data.asks };
+                updateChart();
+                aiAnalyst.trainAndUpdate();
+            }
+        };
+
         wsKline.onerror = (error) => console.error("Kline WebSocket error:", error);
         wsTrade.onerror = (error) => console.error("Trade WebSocket error:", error);
+        wsDepth.onerror = (error) => console.error("Depth WebSocket error:", error);
         wsKline.onclose = () => console.log("Kline WebSocket connection closed");
         wsTrade.onclose = () => console.log("Trade WebSocket connection closed");
+        wsDepth.onclose = () => console.log("Depth WebSocket connection closed");
 
-        function updateChart() {
-            const displayCandles = candles.slice(-maxCandles);
-            const displayClosePrices = closePrices.slice(-maxCandles);
+        document.getElementById('timeframe').addEventListener('change', (e) => {
+            timeframe = e.target.value;
+            wsKline.close();
+            wsKline = new WebSocket(`wss://stream.binance.com:9443/ws/ldousdt@kline_${timeframe}`);
+            wsKline.onopen = () => console.log(`Kline WebSocket switched to ${timeframe}`);
+            wsKline.onmessage = wsKline.onmessage;
+            wsKline.onerror = wsKline.onerror;
+            wsKline.onclose = wsKline.onclose;
+            candles.length = 0;
+            closePrices.length = 0;
+            volumes.length = 0;
+            fetchInitialCandles();
+        });
 
-            if (displayCandles.length === 0) return;
-
-            const upperWicks = [];
-            const lowerWicks = [];
-            displayCandles.forEach(c => {
-                const wickColor = c.o <= c.c ? '#ff9800' : '#90bff9';
-                if (c.h > Math.max(c.o, c.c)) {
-                    upperWicks.push({ x: c.x, y: c.h });
-                    upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
-                    upperWicks.push({ x: c.x, y: null });
-                }
-                if (c.l < Math.min(c.o, c.c)) {
-                    lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
-                    lowerWicks.push({ x: c.x, y: c.l });
-                    lowerWicks.push({ x: c.x, y: null });
-                }
-            });
-
-            const { nwe, sae } = calculateNWE(closePrices, mult);
-            const { sae: sae2 } = calculateNWE(closePrices, mult2);
-            const displayNwe = nwe.slice(-maxCandles);
-            const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
-            const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
-            const middle = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-            const upper2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae2 }));
-            const lower2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae2 }));
-
-            const ema100 = calculateEMA(closePrices, 100).slice(-maxCandles);
-            const ema200 = calculateEMA(closePrices, 200).slice(-maxCandles);
-            const ema100Data = ema100.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-            const ema200Data = ema200.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-
-            const annotations = displayCandles.map((c, i) => ({
-                type: 'box',
-                xMin: c.x.getTime() - 300000,
-                xMax: c.x.getTime() + 300000,
-                yMin: Math.min(c.o, c.c),
-                yMax: Math.max(c.o, c.c),
-                backgroundColor: 'rgba(0, 0, 0, 0)',
-                borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
-                borderWidth: 1
-            })).concat(tradeAnnotations);
-
-            const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
-            const offsetTime = lastCandleTime + 900000;
-
-            const lastPriceData = lastPrice && lastPriceTime ? [
-                { x: displayCandles[0].x, y: lastPrice },
-                { x: new Date(lastCandleTime), y: lastPrice }
-            ] : [];
-
-            chart.data.datasets[0].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
-            chart.data.datasets[1].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
-
-            if (lastPrice && lastPriceTime) {
-                document.getElementById('currentPrice').textContent = `Текущая цена: ${lastPrice.toFixed(4)}`;
-                const lastLowerWide = lower[lower.length - 1]?.y || 0;
-                const lastUpperWide = upper[upper.length - 1]?.y || 0;
-                const lastLowerNarrow = lower2[lower2.length - 1]?.y || 0;
-                const lastUpperNarrow = upper2[upper2.length - 1]?.y || 0;
-                aiTrader.checkTradeConditions(lastPrice, lastPriceTime, lastLowerWide, lastUpperWide, lastLowerNarrow, lastUpperNarrow);
+        async function fetchFearGreedIndex() {
+            try {
+                const response = await fetch('https://api.alternative.me/fng/?limit=1');
+                const data = await response.json();
+                fearGreedIndex = data.data[0];
+                aiAnalyst.trainAndUpdate();
+            } catch (error) {
+                console.error("Error fetching Fear & Greed Index:", error);
             }
-
-            chart.options.scales.x.min = displayCandles[0].x.getTime();
-            chart.options.scales.x.max = offsetTime;
-
-            chart.options.plugins.annotation.annotations = annotations;
-            chart.data.datasets[0].data = upperWicks;
-            chart.data.datasets[1].data = lowerWicks;
-            chart.data.datasets[2].data = upper;
-            chart.data.datasets[3].data = lower;
-            chart.data.datasets[4].data = middle;
-            chart.data.datasets[5].data = upper2;
-            chart.data.datasets[6].data = lower2;
-            chart.data.datasets[7].data = ema100Data;
-            chart.data.datasets[8].data = ema200Data;
-            chart.data.datasets[9].data = lastPriceData;
-            chart.update();
+            setTimeout(fetchFearGreedIndex, 3600000);
         }
 
         async function fetchInitialCandles() {
             try {
-                const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=LDOUSDT&interval=15m&limit=${maxCalcCandles}`);
+                const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=LDOUSDT&interval=${timeframe}&limit=${maxCalcCandles}`);
                 const data = await response.json();
                 data.forEach(candle => {
                     const timestamp = new Date(parseInt(candle[0]));
@@ -638,12 +683,15 @@
                     const high = parseFloat(candle[2]);
                     const low = parseFloat(candle[3]);
                     const close = parseFloat(candle[4]);
+                    const volume = parseFloat(candle[5]);
                     candles.push({ x: timestamp, o: open, h: high, l: low, c: close });
                     closePrices.push(close);
+                    volumes.push(volume);
                 });
                 if (candles.length > maxCalcCandles) {
                     candles.splice(0, candles.length - maxCalcCandles);
                     closePrices.splice(0, closePrices.length - maxCalcCandles);
+                    volumes.splice(0, volumes.length - maxCalcCandles);
                 }
                 updateChart();
                 aiAnalyst.trainAndUpdate();
@@ -653,6 +701,7 @@
         }
 
         fetchInitialCandles();
+        fetchFearGreedIndex();
     </script>
 </body>
 </html>
