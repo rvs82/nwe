@@ -68,7 +68,7 @@
             return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
         }
 
-        function calculateNWE(prices) {
+        function calculateNWE(prices, multiplier) {
             const nwe = [];
             let sae = 0;
             const n = prices.length;
@@ -83,7 +83,7 @@
                 sae += Math.abs(prices[i] - y);
                 nwe.push(y);
             }
-            sae = (sae / Math.min(499, n - 1)) * mult;
+            sae = (sae / Math.min(499, n - 1)) * multiplier;
             return { nwe, sae };
         }
 
@@ -171,12 +171,12 @@
                 }
             });
 
-            const { nwe, sae } = calculateNWE(closePrices);
+            const { nwe, sae } = calculateNWE(closePrices, mult);
+            const { sae: sae2 } = calculateNWE(closePrices, mult2);
             const displayNwe = nwe.slice(-maxCandles);
             const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
             const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
             const middle = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
-            const sae2 = (sae / Math.min(499, closePrices.length - 1)) * mult2;
             const upper2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae2 }));
             const lower2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae2 }));
 
