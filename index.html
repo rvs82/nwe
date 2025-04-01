@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
-        body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        body { background-color: #000000; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
         h1 { text-align: center; }
         #currentPrice { text-align: center; font-size: 18px; margin: 10px 0; }
@@ -17,7 +17,7 @@
 </head>
 <body>
     <h1>LDO/USDT 15m - Nadaraya-Watson Envelope</h1>
-    <div id="currentPrice">Current Price: N/A</div>
+    <div id="currentPrice">Текущая цена: N/A</div>
     <canvas id="priceChart"></canvas>
 
     <script>
@@ -71,7 +71,7 @@
                     {
                         label: 'Middle Envelope',
                         data: [],
-                        borderColor: '#b8860b', // Темно-желтый
+                        borderColor: '#b8860b',
                         borderWidth: 1,
                         pointRadius: 0,
                         fill: false
@@ -107,7 +107,7 @@
                 responsive: true,
                 plugins: {
                     legend: {
-                        display: false // Убираем легенду
+                        display: false
                     },
                     annotation: {
                         annotations: []
@@ -124,26 +124,29 @@
                         bounds: 'data',
                         offset: true,
                         grid: {
-                            color: '#333333' // Цвет сетки для черного фона
+                            color: '#333333'
                         }
                     },
                     y: {
                         title: { display: true, text: 'Price (USDT)' },
                         position: 'right',
                         grid: {
-                            color: '#333333' // Цвет сетки для черного фона
+                            color: '#333333'
                         },
                         ticks: {
-                            color: '#ffffff' // Цвет меток на оси
+                            color: '#ffffff',
+                            callback: function(value) {
+                                return value.toFixed(4); // Формат с 4 знаками после запятой
+                            }
                         }
                     }
                 },
                 layout: {
                     padding: {
-                        right: 50 // Дополнительный отступ справа для шкалы
+                        right: 50
                     }
                 },
-                backgroundColor: '#000000' // Черный фон графика
+                backgroundColor: '#000000'
             }
         });
         console.log("Chart initialized:", chart);
@@ -318,25 +321,9 @@
             ] : [];
 
             if (lastPrice && lastPriceTime) {
-                annotations.push({
-                    type: 'label',
-                    xMin: lastCandleTime,
-                    xMax: lastCandleTime,
-                    yMin: lastPrice,
-                    yMax: lastPrice,
-                    content: lastPrice.toFixed(4),
-                    backgroundColor: 'transparent',
-                    color: '#ffffff',
-                    position: 'end',
-                    xAdjust: 70,
-                    yAdjust: 0,
-                    font: { size: 12 }
-                });
-
-                // Обновляем текстовый элемент с текущей ценой
-                document.getElementById('currentPrice').textContent = `Current Price: ${lastPrice.toFixed(4)}`;
+                document.getElementById('currentPrice').textContent = `Текущая цена: ${lastPrice.toFixed(4)}`;
             } else {
-                document.getElementById('currentPrice').textContent = 'Current Price: N/A';
+                document.getElementById('currentPrice').textContent = 'Текущая цена: N/A';
             }
 
             chart.options.scales.x.min = displayCandles.length > 0 ? displayCandles[0].x.getTime() : Date.now();
