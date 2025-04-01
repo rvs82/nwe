@@ -11,10 +11,11 @@
     <style>
         body { background-color: #000000; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
-        h1 { text-align: center; }
+        h1 { text-align: center; font-size: 22px; }
         #currentPrice { text-align: center; font-size: 18px; margin: 10px 0; }
         #tradeInfo { text-align: center; font-size: 16px; margin: 10px 0; }
         #stats { text-align: center; font-size: 16px; margin: 10px 0; }
+        #soundControl { text-align: center; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -22,6 +23,9 @@
     <div id="currentPrice">Текущая цена: N/A</div>
     <div id="tradeInfo"></div>
     <div id="stats">Открыто: 0 | Сделок: 0 | Прибыль: 0 USDT</div>
+    <div id="soundControl">
+        <label><input type="checkbox" id="muteSound" checked> Звук включен</label>
+    </div>
     <canvas id="priceChart"></canvas>
 
     <script>
@@ -33,22 +37,25 @@
         const tradeSize = 100; // USDT
         const commissionRate = 0.0004; // 0.04% комиссия Binance Futures для тейкера
 
+        const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3'); // Приятный звук открытия
+        const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3'); // Приятный звук закрытия
+
         const ctx = document.getElementById('priceChart').getContext('2d');
         const chart = new Chart(ctx, {
             type: 'line',
             data: {
                 datasets: [
-                    { label: 'Upper Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Lower Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Upper Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Lower Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Upper Wick', data: [], borderColor: '#ff9800', borderWidth: 1, pointRadius: 0, fill: false }, // Растущие фитили
+                    { label: 'Lower Wick', data: [], borderColor: '#90bff9', borderWidth: 1, pointRadius: 0, fill: false }, // Падающие фитили
+                    { label: 'Upper Envelope Wide', data: [], borderColor: '#4caf50', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Lower Envelope Wide', data: [], borderColor: '#4caf50', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Upper Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Lower Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Upper Envelope Narrow', data: [], borderColor: '#ffeb3b', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Lower Envelope Narrow', data: [], borderColor: '#ffeb3b', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'EMA 100', data: [], borderColor: '#d873f6', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'EMA 200', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] },
-                    { label: 'Trade Lines', data: [], borderColor: '#ff0000', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [2, 2] }
+                    { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] }
                 ]
             },
             options: {
@@ -56,9 +63,9 @@
                 plugins: { legend: { display: false }, annotation: { annotations: [] } },
                 scales: {
                     x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
-                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); } } }
+                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); }, padding: 50 } }
                 },
-                layout: { padding: { right: 50 } },
+                layout: { padding: { right: 100 } }, // Увеличен отступ справа
                 backgroundColor: '#000000'
             }
         });
@@ -133,34 +140,41 @@
                     size: tradeSize,
                     startTime: Date.now()
                 };
+                const tradeColor = type === 'long' ? '#00ff00' : '#ff0000'; // Зеленый для лонга, красный для шорта
                 tradeAnnotations.push({
-                    type: 'point',
-                    xValue: time,
-                    yValue: price,
-                    backgroundColor: '#00ff00',
-                    borderColor: '#00ff00',
-                    radius: 4
+                    type: 'line',
+                    xMin: time.getTime() - 24*60*60*1000, // На сутки назад для видимости
+                    xMax: time.getTime() + 24*60*60*1000, // На сутки вперед
+                    yMin: price,
+                    yMax: price,
+                    borderColor: '#f23645',
+                    borderWidth: 1,
+                    id: 'openLine'
                 });
                 tradeAnnotations.push({
-                    type: 'point',
-                    xValue: time,
-                    yValue: takeProfit,
-                    backgroundColor: '#ffff00',
-                    borderColor: '#ffff00',
-                    radius: 4,
-                    id: 'tpPoint'
+                    type: 'line',
+                    xMin: time.getTime() - 24*60*60*1000,
+                    xMax: time.getTime() + 24*60*60*1000,
+                    yMin: takeProfit,
+                    yMax: takeProfit,
+                    borderColor: '#00c108',
+                    borderWidth: 1,
+                    id: 'tpLine'
                 });
                 this.updateTradeInfo();
                 updateStats();
+                if (document.getElementById('muteSound').checked) openSound.play();
             }
 
             updateTakeProfit(time, lowerNarrow, upperNarrow) {
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
-                const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpPoint');
+                const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
                 if (tpAnnotation) {
-                    tpAnnotation.xValue = time;
-                    tpAnnotation.yValue = tp;
+                    tpAnnotation.xMin = time.getTime() - 24*60*60*1000;
+                    tpAnnotation.xMax = time.getTime() + 24*60*60*1000;
+                    tpAnnotation.yMin = tp;
+                    tpAnnotation.yMax = tp;
                 }
             }
 
@@ -190,12 +204,21 @@
                 });
 
                 const closeTime = lastPriceTime;
+                const tradeColor = activeTrade.type === 'long' ? '#00ff00' : '#ff0000';
+                tradeAnnotations.push({
+                    type: 'point',
+                    xValue: activeTrade.openTime,
+                    yValue: activeTrade.openPrice,
+                    backgroundColor: tradeColor,
+                    borderColor: tradeColor,
+                    radius: 4
+                });
                 tradeAnnotations.push({
                     type: 'point',
                     xValue: closeTime,
                     yValue: price,
-                    backgroundColor: '#ff0000',
-                    borderColor: '#ff0000',
+                    backgroundColor: tradeColor,
+                    borderColor: tradeColor,
                     radius: 4
                 });
 
@@ -205,16 +228,13 @@
                     { x: null, y: null }
                 );
 
-                const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpPoint');
-                if (tpAnnotation) {
-                    tpAnnotation.xValue = closeTime;
-                    tpAnnotation.yValue = price;
-                    delete tpAnnotation.id;
-                }
+                tradeAnnotations.splice(tradeAnnotations.findIndex(a => a.id === 'openLine'), 1);
+                tradeAnnotations.splice(tradeAnnotations.findIndex(a => a.id === 'tpLine'), 1);
 
                 activeTrade = null;
                 document.getElementById('tradeInfo').textContent = '';
                 updateStats();
+                if (document.getElementById('muteSound').checked) closeSound.play();
             }
 
             updateTradeInfo() {
@@ -289,6 +309,7 @@
             const upperWicks = [];
             const lowerWicks = [];
             displayCandles.forEach(c => {
+                const wickColor = c.o <= c.c ? '#ff9800' : '#90bff9'; // Растущие - оранжевый, падающие - голубой
                 if (c.h > Math.max(c.o, c.c)) {
                     upperWicks.push({ x: c.x, y: c.h });
                     upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
@@ -321,8 +342,8 @@
                 xMax: c.x.getTime() + 300000,
                 yMin: Math.min(c.o, c.c),
                 yMax: Math.max(c.o, c.c),
-                backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
-                borderColor: '#ffffff',
+                backgroundColor: 'rgba(0, 0, 0, 0)', // Пустые свечи
+                borderColor: c.o <= c.c ? '#ff9800' : '#90bff9', // Растущие - оранжевый, падающие - голубой
                 borderWidth: 1
             })).concat(tradeAnnotations);
 
@@ -333,6 +354,9 @@
                 { x: displayCandles[0]?.x, y: lastPrice },
                 { x: new Date(lastCandleTime), y: lastPrice }
             ] : [];
+
+            chart.data.datasets[0].borderColor = displayCandles[displayCandles.length - 1]?.o <= displayCandles[displayCandles.length - 1]?.c ? '#ff9800' : '#90bff9';
+            chart.data.datasets[1].borderColor = displayCandles[displayCandles.length - 1]?.o <= displayCandles[displayCandles.length - 1]?.c ? '#ff9800' : '#90bff9';
 
             if (lastPrice && lastPriceTime) {
                 document.getElementById('currentPrice').textContent = `Текущая цена: ${lastPrice.toFixed(4)}`;
