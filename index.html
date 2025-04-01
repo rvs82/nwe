@@ -136,7 +136,7 @@
                         ticks: {
                             color: '#ffffff',
                             callback: function(value) {
-                                return value.toFixed(4); // Формат с 4 знаками после запятой
+                                return value.toFixed(4);
                             }
                         }
                     }
@@ -313,11 +313,11 @@
             }));
 
             const lastCandleTime = displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].x.getTime() : Date.now();
-            const offsetTime = lastCandleTime + 900000;
+            const offsetTime = lastCandleTime + 1350000; // 15 свечей по 15 минут
 
             const lastPriceData = lastPrice && lastPriceTime ? [
                 { x: displayCandles[0]?.x, y: lastPrice },
-                { x: new Date(lastCandleTime), y: lastPrice }
+                { x: new Date(offsetTime), y: lastPrice } // Продлеваем до шкалы
             ] : [];
 
             if (lastPrice && lastPriceTime) {
