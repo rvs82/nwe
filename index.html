@@ -13,20 +13,22 @@
         canvas { max-width: 100%; }
         h1 { text-align: center; }
         #currentPrice { text-align: center; font-size: 18px; margin: 10px 0; }
+        #stats { text-align: center; font-size: 16px; margin: 10px 0; }
     </style>
 </head>
 <body>
     <h1>LDO/USDT 15m - Nadaraya-Watson Envelope</h1>
     <div id="currentPrice">Текущая цена: N/A</div>
+    <div id="stats">Сделок: 0 | Прибыль: 0 USDT</div>
     <canvas id="priceChart"></canvas>
 
     <script>
         const h = 8;
         const mult = 2.89;  // Широкий канал
         const mult2 = 1.7;  // Узкий канал
-        const repaint = true;
         const maxCandles = 126;
         const maxCalcCandles = 500;
+        const tradeSize = 100; // USDT
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         const chart = new Chart(ctx, {
@@ -35,29 +37,23 @@
                 datasets: [
                     { label: 'Upper Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Lower Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Upper Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false }, // Зеленый широкий
-                    { label: 'Lower Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false }, // Зеленый широкий
-                    { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },     // Серый средний
-                    { label: 'Upper Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false }, // Желтый узкий
-                    { label: 'Lower Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false }, // Желтый узкий
+                    { label: 'Upper Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Lower Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Upper Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Lower Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'EMA 100', data: [], borderColor: '#d873f6', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'EMA 200', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, fill: false },
-                    { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] }
+                    { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] },
+                    { label: 'Trade Lines', data: [], borderColor: '#ff0000', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [2, 2] }
                 ]
             },
             options: {
                 responsive: true,
                 plugins: { legend: { display: false }, annotation: { annotations: [] } },
                 scales: {
-                    x: {
-                        type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
-                        title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data',
-                        offset: true, grid: { color: '#333333' }
-                    },
-                    y: {
-                        title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' },
-                        ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); } }
-                    }
+                    x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
+                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); } } }
                 },
                 layout: { padding: { right: 50 } },
                 backgroundColor: '#000000'
@@ -106,6 +102,117 @@
         const closePrices = [];
         let lastPrice = null;
         let lastPriceTime = null;
+        let activeTrade = null;
+        const tradeHistory = [];
+        const tradeAnnotations = [];
+
+        class TradingAI {
+            checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
+                if (!activeTrade) {
+                    if (price <= lowerWide) {
+                        this.openTrade('long', price, time, upperNarrow);
+                    } else if (price >= upperWide) {
+                        this.openTrade('short', price, time, lowerNarrow);
+                    }
+                } else {
+                    this.updateTakeProfit(time, lowerNarrow, upperNarrow);
+                    this.checkCloseTrade(price);
+                }
+            }
+
+            openTrade(type, price, time, takeProfit) {
+                activeTrade = {
+                    type,
+                    openPrice: price,
+                    openTime: time,
+                    takeProfit,
+                    size: tradeSize
+                };
+                tradeAnnotations.push({
+                    type: 'point',
+                    xValue: time,
+                    yValue: price,
+                    backgroundColor: '#00ff00',
+                    borderColor: '#00ff00',
+                    radius: 4
+                });
+                tradeAnnotations.push({
+                    type: 'point',
+                    xValue: time,
+                    yValue: takeProfit,
+                    backgroundColor: '#ffff00',
+                    borderColor: '#ffff00',
+                    radius: 4,
+                    id: 'tpPoint'
+                });
+            }
+
+            updateTakeProfit(time, lowerNarrow, upperNarrow) {
+                const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
+                activeTrade.takeProfit = tp;
+                const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpPoint');
+                if (tpAnnotation) {
+                    tpAnnotation.xValue = time;
+                    tpAnnotation.yValue = tp;
+                }
+            }
+
+            checkCloseTrade(price) {
+                if (activeTrade.type === 'long' && price >= activeTrade.takeProfit) {
+                    this.closeTrade(price);
+                } else if (activeTrade.type === 'short' && price <= activeTrade.takeProfit) {
+                    this.closeTrade(price);
+                }
+            }
+
+            closeTrade(price) {
+                const profit = activeTrade.type === 'long' 
+                    ? (price - activeTrade.openPrice) * (tradeSize / activeTrade.openPrice)
+                    : (activeTrade.openPrice - price) * (tradeSize / activeTrade.openPrice);
+                
+                tradeHistory.push({
+                    type: activeTrade.type,
+                    openPrice: activeTrade.openPrice,
+                    closePrice: price,
+                    openTime: activeTrade.openTime,
+                    closeTime: lastPriceTime,
+                    profit
+                });
+
+                const closeTime = lastPriceTime;
+                tradeAnnotations.push({
+                    type: 'point',
+                    xValue: closeTime,
+                    yValue: price,
+                    backgroundColor: '#ff0000',
+                    borderColor: '#ff0000',
+                    radius: 4
+                });
+
+                chart.data.datasets[10].data.push(
+                    { x: activeTrade.openTime, y: activeTrade.openPrice },
+                    { x: closeTime, y: price },
+                    { x: null, y: null }
+                );
+
+                const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpPoint');
+                if (tpAnnotation) {
+                    tpAnnotation.xValue = closeTime;
+                    tpAnnotation.yValue = price;
+                    delete tpAnnotation.id;
+                }
+
+                activeTrade = null;
+                updateStats();
+            }
+        }
+
+        const ai = new TradingAI();
+
+        function updateStats() {
+            const totalProfit = tradeHistory.reduce((sum, trade) => sum + trade.profit, 0);
+            document.getElementById('stats').textContent = `Сделок: ${tradeHistory.length} | Прибыль: ${totalProfit.toFixed(2)} USDT`;
+        }
 
         const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
         const wsTrade = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@aggTrade');
@@ -194,7 +301,7 @@
                 backgroundColor: c.o <= c.c ? '#00c4b4' : '#ff1744',
                 borderColor: '#ffffff',
                 borderWidth: 1
-            }));
+            })).concat(tradeAnnotations);
 
             const lastCandleTime = displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].x.getTime() : Date.now();
             const offsetTime = lastCandleTime + 900000;
@@ -206,8 +313,11 @@
 
             if (lastPrice && lastPriceTime) {
                 document.getElementById('currentPrice').textContent = `Текущая цена: ${lastPrice.toFixed(4)}`;
-            } else {
-                document.getElementById('currentPrice').textContent = 'Текущая цена: N/A';
+                const lastLowerWide = lower[lower.length - 1]?.y || 0;
+                const lastUpperWide = upper[upper.length - 1]?.y || 0;
+                const lastLowerNarrow = lower2[lower2.length - 1]?.y || 0;
+                const lastUpperNarrow = upper2[upper2.length - 1]?.y || 0;
+                ai.checkTradeConditions(lastPrice, lastPriceTime, lastLowerWide, lastUpperWide, lastLowerNarrow, lastUpperNarrow);
             }
 
             chart.options.scales.x.min = displayCandles.length > 0 ? displayCandles[0].x.getTime() : Date.now();
