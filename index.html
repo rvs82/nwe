@@ -66,7 +66,7 @@
                 responsive: true,
                 plugins: { 
                     legend: { display: false }, 
-                    annotation: { annotations: [] } // Изначально пусто
+                    annotation: { annotations: [] }
                 },
                 scales: {
                     x: { 
@@ -347,7 +347,7 @@
             const displayCandles = candles.slice(-maxCandles);
             const displayClosePrices = closePrices.slice(-maxCandles);
 
-            if (displayCandles.length === 0) return; // Не обновляем график, пока нет данных
+            if (displayCandles.length === 0) return;
 
             const upperWicks = [];
             const lowerWicks = [];
@@ -388,22 +388,7 @@
                 backgroundColor: 'rgba(0, 0, 0, 0)',
                 borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
                 borderWidth: 1
-            })).concat(tradeAnnotations).concat([{
-                type: 'box',
-                xMin: displayCandles[0].x.getTime(),
-                xMax: displayCandles[0].x.getTime() + 150*60*1000, // 150 минут для ширины
-                yMin: 'max',
-                yMax: 'max',
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                borderWidth: 0,
-                label: {
-                    content: 'LDO/USDT 15m',
-                    enabled: true,
-                    position: 'start',
-                    color: 'rgba(255, 255, 255, 0.5)',
-                    font: { size: 14 }
-                }
-            }]);
+            })).concat(tradeAnnotations);
 
             const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
             const offsetTime = lastCandleTime + 900000;
