@@ -122,6 +122,7 @@
                             source: 'auto'
                         },
                         bounds: 'data',
+                        offset: true,
                         grid: {
                             color: '#333333'
                         }
@@ -135,14 +136,14 @@
                         ticks: {
                             color: '#ffffff',
                             callback: function(value) {
-                                return value.toFixed(4);
+                                return value.toFixed(4); // Формат с 4 знаками после запятой
                             }
                         }
                     }
                 },
                 layout: {
                     padding: {
-                        right: 120 // Отступ на 15 свечей (примерно 120 пикселей)
+                        right: 50
                     }
                 },
                 backgroundColor: '#000000'
@@ -312,6 +313,7 @@
             }));
 
             const lastCandleTime = displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].x.getTime() : Date.now();
+            const offsetTime = lastCandleTime + 900000;
 
             const lastPriceData = lastPrice && lastPriceTime ? [
                 { x: displayCandles[0]?.x, y: lastPrice },
@@ -323,6 +325,9 @@
             } else {
                 document.getElementById('currentPrice').textContent = 'Текущая цена: N/A';
             }
+
+            chart.options.scales.x.min = displayCandles.length > 0 ? displayCandles[0].x.getTime() : Date.now();
+            chart.options.scales.x.max = offsetTime;
 
             chart.options.plugins.annotation.annotations = annotations;
             chart.data.datasets[0].data = upperWicks;
