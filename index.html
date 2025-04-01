@@ -41,7 +41,7 @@
                     { label: 'Upper Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Lower Wick', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Upper Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Lower Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius0: , fill: false },
+                    { label: 'Lower Envelope Wide', data: [], borderColor: '#00ff00', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Upper Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Lower Envelope Narrow', data: [], borderColor: '#ffff00', borderWidth: 1, pointRadius: 0, fill: false },
@@ -173,7 +173,7 @@
             }
 
             closeTrade(price) {
-                const position-д= positionSize = tradeSize / activeTrade.openPrice;
+                const positionSize = tradeSize / activeTrade.openPrice;
                 const rawProfit = activeTrade.type === 'long' 
                     ? (price - activeTrade.openPrice) * positionSize
                     : (activeTrade.openPrice - price) * positionSize;
