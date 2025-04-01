@@ -12,10 +12,12 @@
         body { background-color: #1e222d; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
         h1 { text-align: center; }
+        #currentPrice { text-align: center; font-size: 18px; margin: 10px 0; }
     </style>
 </head>
 <body>
     <h1>LDO/USDT 15m - Nadaraya-Watson Envelope</h1>
+    <div id="currentPrice">Current Price: N/A</div>
     <canvas id="priceChart"></canvas>
 
     <script>
@@ -67,6 +69,14 @@
                         fill: false
                     },
                     {
+                        label: 'Middle Envelope',
+                        data: [],
+                        borderColor: '#b8860b', // Темно-желтый
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        fill: false
+                    },
+                    {
                         label: 'EMA 100',
                         data: [],
                         borderColor: '#d873f6',
@@ -96,6 +106,9 @@
             options: {
                 responsive: true,
                 plugins: {
+                    legend: {
+                        display: false // Убираем легенду
+                    },
                     annotation: {
                         annotations: []
                     }
@@ -108,13 +121,29 @@
                         ticks: {
                             source: 'auto'
                         },
-                        bounds: 'data'
+                        bounds: 'data',
+                        offset: true,
+                        grid: {
+                            color: '#333333' // Цвет сетки для черного фона
+                        }
                     },
                     y: {
                         title: { display: true, text: 'Price (USDT)' },
-                        position: 'right'
+                        position: 'right',
+                        grid: {
+                            color: '#333333' // Цвет сетки для черного фона
+                        },
+                        ticks: {
+                            color: '#ffffff' // Цвет меток на оси
+                        }
                     }
-                }
+                },
+                layout: {
+                    padding: {
+                        right: 50 // Дополнительный отступ справа для шкалы
+                    }
+                },
+                backgroundColor: '#000000' // Черный фон графика
             }
         });
         console.log("Chart initialized:", chart);
@@ -242,11 +271,6 @@
             const displayCandles = candles.slice(-maxCandles);
             const displayClosePrices = closePrices.slice(-maxCandles);
 
-            // Добавляем "пустую" свечу для создания отступа в 10 баров
-            const lastCandleTime = displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].x.getTime() : Date.now();
-            const offsetTime = lastCandleTime + 900000; // 10 баров по 15 минут
-            const extendedCandles = [...displayCandles, { x: new Date(offsetTime), o: null, h: null, l: null, c: null }];
-
             const upperWicks = [];
             const lowerWicks = [];
             displayCandles.forEach(c => {
@@ -267,6 +291,7 @@
             const displayNwe = nwe.slice(-maxCandles);
             const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
             const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
+            const middle = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
 
             const ema100 = calculateEMA(closePrices, 100).slice(-maxCandles);
             const ema200 = calculateEMA(closePrices, 200).slice(-maxCandles);
@@ -283,6 +308,9 @@
                 borderColor: '#ffffff',
                 borderWidth: 1
             }));
+
+            const lastCandleTime = displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].x.getTime() : Date.now();
+            const offsetTime = lastCandleTime + 900000;
 
             const lastPriceData = lastPrice && lastPriceTime ? [
                 { x: displayCandles[0]?.x, y: lastPrice },
@@ -304,16 +332,25 @@
                     yAdjust: 0,
                     font: { size: 12 }
                 });
+
+                // Обновляем текстовый элемент с текущей ценой
+                document.getElementById('currentPrice').textContent = `Current Price: ${lastPrice.toFixed(4)}`;
+            } else {
+                document.getElementById('currentPrice').textContent = 'Current Price: N/A';
             }
+
+            chart.options.scales.x.min = displayCandles.length > 0 ? displayCandles[0].x.getTime() : Date.now();
+            chart.options.scales.x.max = offsetTime;
 
             chart.options.plugins.annotation.annotations = annotations;
             chart.data.datasets[0].data = upperWicks;
             chart.data.datasets[1].data = lowerWicks;
             chart.data.datasets[2].data = upper;
             chart.data.datasets[3].data = lower;
-            chart.data.datasets[4].data = ema100Data;
-            chart.data.datasets[5].data = ema200Data;
-            chart.data.datasets[6].data = lastPriceData;
+            chart.data.datasets[4].data = middle;
+            chart.data.datasets[5].data = ema100Data;
+            chart.data.datasets[6].data = ema200Data;
+            chart.data.datasets[7].data = lastPriceData;
             chart.update();
             console.log("Chart updated");
         }
