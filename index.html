@@ -11,34 +11,38 @@
     <style>
         body { background-color: #000000; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         canvas { max-width: 100%; }
-        h1 { text-align: center; font-size: 22px; }
-        #currentPrice { text-align: center; font-size: 18px; margin: 10px 0; }
-        #tradeInfo { text-align: center; font-size: 16px; margin: 10px 0; }
-        #stats { text-align: center; font-size: 16px; margin: 10px 0; }
-        #soundControl { text-align: center; margin: 10px 0; }
+        #infoBar { text-align: center; font-size: 16px; margin: 10px 0; }
+        #tradeLog { 
+            max-height: 150px; 
+            overflow-y: auto; 
+            font-size: 14px; 
+            margin-top: 10px; 
+            padding: 10px; 
+            background-color: #1a1a1a; 
+            border: 1px solid #333; 
+        }
     </style>
 </head>
 <body>
-    <h1>LDO/USDT 15m - Nadaraya-Watson Envelope</h1>
-    <div id="currentPrice">Текущая цена: N/A</div>
-    <div id="tradeInfo"></div>
-    <div id="stats">Открыто: 0 | Сделок: 0 | Прибыль: 0 USDT</div>
-    <div id="soundControl">
-        <label><input type="checkbox" id="muteSound" checked> Звук включен</label>
-    </div>
     <canvas id="priceChart"></canvas>
+    <div id="infoBar">
+        <span id="currentPrice">Текущая цена: N/A</span> | 
+        <span id="stats">Открыто: 0 | Сделок: 0 | Прибыль: 0 USDT</span> | 
+        <label><input type="checkbox" id="muteSound" checked> Звук</label>
+    </div>
+    <div id="tradeLog"></div>
 
     <script>
         const h = 8;
-        const mult = 2.89;  // Широкий канал
-        const mult2 = 1.7;  // Узкий канал
+        const mult = 2.89;
+        const mult2 = 1.7;
         const maxCandles = 126;
         const maxCalcCandles = 500;
-        const tradeSize = 100; // USDT
-        const commissionRate = 0.0004; // 0.04% комиссия Binance Futures для тейкера
+        const tradeSize = 100;
+        const commissionRate = 0.0004;
 
-        const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3'); // Приятный звук открытия
-        const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3'); // Приятный звук закрытия
+        const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
+        const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         const chart = new Chart(ctx, {
@@ -60,7 +64,27 @@
             },
             options: {
                 responsive: true,
-                plugins: { legend: { display: false }, annotation: { annotations: [] } },
+                plugins: { 
+                    legend: { display: false }, 
+                    annotation: { 
+                        annotations: [{
+                            type: 'box',
+                            xMin: 0,
+                            xMax: 150,
+                            yMin: 'max',
+                            yMax: 'max',
+                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 0,
+                            label: {
+                                content: 'LDO/USDT 15m',
+                                enabled: true,
+                                position: 'start',
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                font: { size: 14 }
+                            }
+                        }]
+                    } 
+                },
                 scales: {
                     x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
                     y: { 
@@ -70,11 +94,11 @@
                         ticks: { 
                             color: '#ffffff', 
                             callback: function(value) { return value.toFixed(4); }, 
-                            padding: 50 // Отступ только между графиком и шкалой
+                            padding: 50 
                         } 
                     }
                 },
-                layout: { padding: { right: 0 } }, // Убрано лишнее
+                layout: { padding: { right: 0 } },
                 backgroundColor: '#000000'
             }
         });
@@ -172,6 +196,7 @@
                 });
                 this.updateTradeInfo();
                 updateStats();
+                updateTradeLog();
                 if (document.getElementById('muteSound').checked) openSound.play();
             }
 
@@ -243,6 +268,7 @@
                 activeTrade = null;
                 document.getElementById('tradeInfo').textContent = '';
                 updateStats();
+                updateTradeLog();
                 if (document.getElementById('muteSound').checked) closeSound.play();
             }
 
@@ -264,6 +290,17 @@
             const totalProfit = tradeHistory.reduce((sum, trade) => sum + trade.profit, 0);
             const openTrades = activeTrade ? 1 : 0;
             document.getElementById('stats').textContent = `Открыто: ${openTrades} | Сделок: ${tradeHistory.length} | Прибыль: ${totalProfit.toFixed(2)} USDT`;
+        }
+
+        function updateTradeLog() {
+            const log = document.getElementById('tradeLog');
+            const lastTrades = tradeHistory.slice(-30).reverse(); // Последние 30 сделок
+            log.innerHTML = lastTrades.map(trade => {
+                const openTime = new Date(trade.openTime).toLocaleTimeString();
+                const closeTime = new Date(trade.closeTime).toLocaleTimeString();
+                return `${trade.type.toUpperCase()} | Открытие: ${trade.openPrice.toFixed(4)} (${openTime}) | Закрытие: ${trade.closePrice.toFixed(4)} (${closeTime}) | Прибыль: ${trade.profit.toFixed(2)} USDT`;
+            }).join('<br>');
+            log.scrollTop = 0; // Прокрутка вверх для отображения последних сделок
         }
 
         const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
@@ -354,7 +391,22 @@
                 backgroundColor: 'rgba(0, 0, 0, 0)',
                 borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
                 borderWidth: 1
-            })).concat(tradeAnnotations);
+            })).concat(tradeAnnotations).concat([{
+                type: 'box',
+                xMin: 0,
+                xMax: 150,
+                yMin: 'max',
+                yMax: 'max',
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                borderWidth: 0,
+                label: {
+                    content: 'LDO/USDT 15m',
+                    enabled: true,
+                    position: 'start',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    font: { size: 14 }
+                }
+            }]);
 
             const lastCandleTime = displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].x.getTime() : Date.now();
             const offsetTime = lastCandleTime + 900000;
