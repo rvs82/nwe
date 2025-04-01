@@ -19,7 +19,7 @@
 <body>
     <h1>LDO/USDT 15m - Nadaraya-Watson Envelope</h1>
     <div id="currentPrice">Текущая цена: N/A</div>
-    <div id="stats">Сделок: 0 | Прибыль: 0 USDT</div>
+    <div id="stats">Сделок: 0 | Прибыль: 0 USDT | Время сделки: (-)</div>
     <canvas id="priceChart"></canvas>
 
     <script>
@@ -117,6 +117,7 @@
                 } else {
                     this.updateTakeProfit(time, lowerNarrow, upperNarrow);
                     this.checkCloseTrade(price);
+                    this.updateTradeTime();
                 }
             }
 
@@ -126,7 +127,8 @@
                     openPrice: price,
                     openTime: time,
                     takeProfit,
-                    size: tradeSize
+                    size: tradeSize,
+                    startTime: Date.now()
                 };
                 tradeAnnotations.push({
                     type: 'point',
@@ -145,6 +147,7 @@
                     radius: 4,
                     id: 'tpPoint'
                 });
+                this.updateTradeTime();
             }
 
             updateTakeProfit(time, lowerNarrow, upperNarrow) {
@@ -205,13 +208,24 @@
                 activeTrade = null;
                 updateStats();
             }
+
+            updateTradeTime() {
+                if (activeTrade) {
+                    const elapsed = Math.floor((Date.now() - activeTrade.startTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('stats').textContent = `Сделок: ${tradeHistory.length} | Прибыль: ${tradeHistory.reduce((sum, t) => sum + t.profit, 0).toFixed(2)} USDT | Время сделки: (${minutes}:${seconds < 10 ? '0' + seconds : seconds})`;
+                } else {
+                    updateStats();
+                }
+            }
         }
 
         const ai = new TradingAI();
 
         function updateStats() {
             const totalProfit = tradeHistory.reduce((sum, trade) => sum + trade.profit, 0);
-            document.getElementById('stats').textContent = `Сделок: ${tradeHistory.length} | Прибыль: ${totalProfit.toFixed(2)} USDT`;
+            document.getElementById('stats').textContent = `Сделок: ${tradeHistory.length} | Прибыль: ${totalProfit.toFixed(2)} USDT | Время сделки: (-)`; 
         }
 
         const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
