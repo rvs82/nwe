@@ -281,14 +281,14 @@
 
             const lastPriceData = lastPrice && lastPriceTime ? [
                 { x: displayCandles[0]?.x, y: lastPrice },
-                { x: lastPriceTime, y: lastPrice }
+                { x: displayCandles[displayCandles.length - 1]?.x, y: lastPrice }
             ] : [];
 
             if (lastPrice && lastPriceTime) {
                 annotations.push({
                     type: 'label',
-                    xMin: lastPriceTime.getTime(),
-                    xMax: lastPriceTime.getTime(),
+                    xMin: displayCandles[displayCandles.length - 1]?.x.getTime(),
+                    xMax: displayCandles[displayCandles.length - 1]?.x.getTime(),
                     yMin: lastPrice,
                     yMax: lastPrice,
                     content: lastPrice.toFixed(4),
@@ -301,6 +301,9 @@
                 });
             }
 
+            chart.options.scales.x.min = displayCandles.length > 0
+                ? displayCandles[0].x.getTime()
+                : Date.now();
             chart.options.scales.x.max = displayCandles.length > 0
                 ? displayCandles[displayCandles.length - 1].x.getTime() + 900000
                 : Date.now();
