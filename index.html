@@ -66,27 +66,18 @@
                 responsive: true,
                 plugins: { 
                     legend: { display: false }, 
-                    annotation: { 
-                        annotations: [{
-                            type: 'box',
-                            xMin: 0,
-                            xMax: 150,
-                            yMin: 'max',
-                            yMax: 'max',
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                            borderWidth: 0,
-                            label: {
-                                content: 'LDO/USDT 15m',
-                                enabled: true,
-                                position: 'start',
-                                color: 'rgba(255, 255, 255, 0.5)',
-                                font: { size: 14 }
-                            }
-                        }]
-                    } 
+                    annotation: { annotations: [] } // Изначально пусто
                 },
                 scales: {
-                    x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
+                    x: { 
+                        type: 'time', 
+                        time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, 
+                        title: { display: true, text: 'Time' }, 
+                        ticks: { source: 'auto' }, 
+                        bounds: 'data', 
+                        offset: true, 
+                        grid: { color: '#333333' } 
+                    },
                     y: { 
                         title: { display: true, text: 'Price (USDT)' }, 
                         position: 'right', 
@@ -174,10 +165,12 @@
                     startTime: Date.now()
                 };
                 const tradeColor = type === 'long' ? '#00ff00' : '#ff0000';
+                const minTime = candles.length > 0 ? candles[0].x.getTime() : time.getTime() - 15*60*1000;
+                const maxTime = candles.length > 0 ? candles[candles.length - 1].x.getTime() + 15*60*1000 : time.getTime() + 15*60*1000;
                 tradeAnnotations.push({
                     type: 'line',
-                    xMin: time.getTime() - 24*60*60*1000,
-                    xMax: time.getTime() + 24*60*60*1000,
+                    xMin: minTime,
+                    xMax: maxTime,
                     yMin: price,
                     yMax: price,
                     borderColor: '#f23645',
@@ -186,8 +179,8 @@
                 });
                 tradeAnnotations.push({
                     type: 'line',
-                    xMin: time.getTime() - 24*60*60*1000,
-                    xMax: time.getTime() + 24*60*60*1000,
+                    xMin: minTime,
+                    xMax: maxTime,
                     yMin: takeProfit,
                     yMax: takeProfit,
                     borderColor: '#00c108',
@@ -204,9 +197,11 @@
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
+                const minTime = candles.length > 0 ? candles[0].x.getTime() : time.getTime() - 15*60*1000;
+                const maxTime = candles.length > 0 ? candles[candles.length - 1].x.getTime() + 15*60*1000 : time.getTime() + 15*60*1000;
                 if (tpAnnotation) {
-                    tpAnnotation.xMin = time.getTime() - 24*60*60*1000;
-                    tpAnnotation.xMax = time.getTime() + 24*60*60*1000;
+                    tpAnnotation.xMin = minTime;
+                    tpAnnotation.xMax = maxTime;
                     tpAnnotation.yMin = tp;
                     tpAnnotation.yMax = tp;
                 }
@@ -294,13 +289,13 @@
 
         function updateTradeLog() {
             const log = document.getElementById('tradeLog');
-            const lastTrades = tradeHistory.slice(-30).reverse(); // Последние 30 сделок
+            const lastTrades = tradeHistory.slice(-30).reverse();
             log.innerHTML = lastTrades.map(trade => {
                 const openTime = new Date(trade.openTime).toLocaleTimeString();
                 const closeTime = new Date(trade.closeTime).toLocaleTimeString();
                 return `${trade.type.toUpperCase()} | Открытие: ${trade.openPrice.toFixed(4)} (${openTime}) | Закрытие: ${trade.closePrice.toFixed(4)} (${closeTime}) | Прибыль: ${trade.profit.toFixed(2)} USDT`;
             }).join('<br>');
-            log.scrollTop = 0; // Прокрутка вверх для отображения последних сделок
+            log.scrollTop = 0;
         }
 
         const wsKline = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@kline_15m');
@@ -352,6 +347,8 @@
             const displayCandles = candles.slice(-maxCandles);
             const displayClosePrices = closePrices.slice(-maxCandles);
 
+            if (displayCandles.length === 0) return; // Не обновляем график, пока нет данных
+
             const upperWicks = [];
             const lowerWicks = [];
             displayCandles.forEach(c => {
@@ -393,8 +390,8 @@
                 borderWidth: 1
             })).concat(tradeAnnotations).concat([{
                 type: 'box',
-                xMin: 0,
-                xMax: 150,
+                xMin: displayCandles[0].x.getTime(),
+                xMax: displayCandles[0].x.getTime() + 150*60*1000, // 150 минут для ширины
                 yMin: 'max',
                 yMax: 'max',
                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -408,16 +405,16 @@
                 }
             }]);
 
-            const lastCandleTime = displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].x.getTime() : Date.now();
+            const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
             const offsetTime = lastCandleTime + 900000;
 
             const lastPriceData = lastPrice && lastPriceTime ? [
-                { x: displayCandles[0]?.x, y: lastPrice },
+                { x: displayCandles[0].x, y: lastPrice },
                 { x: new Date(lastCandleTime), y: lastPrice }
             ] : [];
 
-            chart.data.datasets[0].borderColor = displayCandles[displayCandles.length - 1]?.o <= displayCandles[displayCandles.length - 1]?.c ? '#ff9800' : '#90bff9';
-            chart.data.datasets[1].borderColor = displayCandles[displayCandles.length - 1]?.o <= displayCandles[displayCandles.length - 1]?.c ? '#ff9800' : '#90bff9';
+            chart.data.datasets[0].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
+            chart.data.datasets[1].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
 
             if (lastPrice && lastPriceTime) {
                 document.getElementById('currentPrice').textContent = `Текущая цена: ${lastPrice.toFixed(4)}`;
@@ -428,7 +425,7 @@
                 ai.checkTradeConditions(lastPrice, lastPriceTime, lastLowerWide, lastUpperWide, lastLowerNarrow, lastUpperNarrow);
             }
 
-            chart.options.scales.x.min = displayCandles.length > 0 ? displayCandles[0].x.getTime() : Date.now();
+            chart.options.scales.x.min = displayCandles[0].x.getTime();
             chart.options.scales.x.max = offsetTime;
 
             chart.options.plugins.annotation.annotations = annotations;
