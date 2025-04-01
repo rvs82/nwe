@@ -113,6 +113,18 @@
             }
         });
 
+        const candles = [];
+        const closePrices = [];
+        const volumes = [];
+        let lastPrice = null;
+        let lastPriceTime = null;
+        let activeTrade = null;
+        const tradeHistory = [];
+        const tradeAnnotations = [];
+        let aiEntryPoint = null;
+        let aiExitPoint = null;
+        let fearGreedIndex = null;
+
         function gauss(x, h) {
             return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
         }
@@ -174,17 +186,89 @@
             return rsi;
         }
 
-        const candles = [];
-        const closePrices = [];
-        const volumes = [];
-        let lastPrice = null;
-        let lastPriceTime = null;
-        let activeTrade = null;
-        const tradeHistory = [];
-        const tradeAnnotations = [];
-        let aiEntryPoint = null;
-        let aiExitPoint = null;
-        let fearGreedIndex = null;
+        function updateChart() {
+            const displayCandles = candles.slice(-maxCandles);
+            const displayClosePrices = closePrices.slice(-maxCandles);
+
+            if (displayCandles.length === 0) return;
+
+            const upperWicks = [];
+            const lowerWicks = [];
+            displayCandles.forEach(c => {
+                const wickColor = c.o <= c.c ? '#ff9800' : '#90bff9';
+                if (c.h > Math.max(c.o, c.c)) {
+                    upperWicks.push({ x: c.x, y: c.h });
+                    upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
+                    upperWicks.push({ x: c.x, y: null });
+                }
+                if (c.l < Math.min(c.o, c.c)) {
+                    lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
+                    lowerWicks.push({ x: c.x, y: c.l });
+                    lowerWicks.push({ x: c.x, y: null });
+                }
+            });
+
+            const { nwe, sae } = calculateNWE(closePrices, mult);
+            const { sae: sae2 } = calculateNWE(closePrices, mult2);
+            const displayNwe = nwe.slice(-maxCandles);
+            const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
+            const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
+            const middle = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const upper2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae2 }));
+            const lower2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae2 }));
+
+            const ema100 = calculateEMA(closePrices, 100).slice(-maxCandles);
+            const ema200 = calculateEMA(closePrices, 200).slice(-maxCandles);
+            const ema100Data = ema100.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const ema200Data = ema200.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+
+            const annotations = displayCandles.map((c, i) => ({
+                type: 'box',
+                xMin: c.x.getTime() - 300000,
+                xMax: c.x.getTime() + 300000,
+                yMin: Math.min(c.o, c.c),
+                yMax: Math.max(c.o, c.c),
+                backgroundColor: 'rgba(0, 0, 0, 0)',
+                borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
+                borderWidth: 1
+            })).concat(tradeAnnotations);
+
+            const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
+            const offsetTime = lastCandleTime + 900000;
+
+            const lastPriceData = lastPrice && lastPriceTime ? [
+                { x: displayCandles[0].x, y: lastPrice },
+                { x: new Date(lastCandleTime), y: lastPrice }
+            ] : [];
+
+            chart.data.datasets[0].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
+            chart.data.datasets[1].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
+
+            if (lastPrice && lastPriceTime) {
+                document.getElementById('currentPrice').textContent = `Текущая цена: ${lastPrice.toFixed(4)}`;
+                const lastLowerWide = lower[lower.length - 1]?.y || 0;
+                const lastUpperWide = upper[upper.length - 1]?.y || 0;
+                const lastLowerNarrow = lower2[lower2.length - 1]?.y || 0;
+                const lastUpperNarrow = upper2[upper2.length - 1]?.y || 0;
+                aiTrader.checkTradeConditions(lastPrice, lastPriceTime, lastLowerWide, lastUpperWide, lastLowerNarrow, lastUpperNarrow);
+            }
+
+            chart.options.scales.x.min = displayCandles[0].x.getTime();
+            chart.options.scales.x.max = offsetTime;
+
+            chart.options.plugins.annotation.annotations = annotations;
+            chart.data.datasets[0].data = upperWicks;
+            chart.data.datasets[1].data = lowerWicks;
+            chart.data.datasets[2].data = upper;
+            chart.data.datasets[3].data = lower;
+            chart.data.datasets[4].data = middle;
+            chart.data.datasets[5].data = upper2;
+            chart.data.datasets[6].data = lower2;
+            chart.data.datasets[7].data = ema100Data;
+            chart.data.datasets[8].data = ema200Data;
+            chart.data.datasets[9].data = lastPriceData;
+            chart.update();
+        }
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
@@ -337,7 +421,7 @@
 
             createModel() {
                 const model = tf.sequential();
-                model.add(tf.layers.lstm({ units: 50, inputShape: [20, 5], returnSequences: true }));
+                model.add(tf.layers.lstm({ units: 50, inputShape: [10, 5], returnSequences: true }));
                 model.add(tf.layers.lstm({ units: 50 }));
                 model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
                 model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
@@ -345,9 +429,9 @@
             }
 
             async trainModel() {
-                if (closePrices.length < 40 || tradeHistory.length < 10) return;
+                if (closePrices.length < 20 || tradeHistory.length < 5) return;
 
-                const lookback = 20;
+                const lookback = 10;
                 const xs = [];
                 const ys = [];
                 const { nwe: nweWide } = calculateNWE(closePrices, mult);
@@ -390,9 +474,9 @@
             }
 
             async predictOptimalPoints() {
-                if (!this.isTrained || closePrices.length < 20) return null;
+                if (!this.isTrained || closePrices.length < 10) return null;
 
-                const lookback = 20;
+                const lookback = 10;
                 const { nwe: nweWide } = calculateNWE(closePrices, mult);
                 const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices, mult2);
                 const ema100 = calculateEMA(closePrices, 100);
@@ -429,7 +513,7 @@
 
                 let entry = null, exit = null;
                 if (longProb > shortProb && ema100Last > ema200Last && lastPrice < middle && volumes[volumes.length - 1] > avgVolume) {
-                    entry = { type: 'long', price: lowerWide * 0.995, time: new Date() }; // Сдвиг для лучшей цены
+                    entry = { type: 'long', price: lowerWide * 0.995, time: new Date() };
                     exit = { type: 'long', price: upperNarrow * 1.005, time: new Date() };
                 } else if (shortProb > longProb && ema100Last < ema200Last && lastPrice > middle && volumes[volumes.length - 1] > avgVolume) {
                     entry = { type: 'short', price: upperWide * 1.005, time: new Date() };
@@ -465,7 +549,7 @@
                 analysis.push(`Цена сейчас около ${lastPrice}. Она движется между широким каналом (${lowerWide} - ${upperWide}) и узким (${lowerNarrow} - ${upperNarrow}).`);
                 
                 if (lastPrice > middle) {
-                    analysis.push("Цена выше средней линии, рынок выглядит бычьим. Это может быть хорошая зона для шорта, если вы следуете системе.");
+                    analysis.push("Цена выше средней линии, рынок выглядит бычьим. Это может быть хорошая зона для шорта по вашей системе.");
                 } else {
                     analysis.push("Цена ниже средней, возможен медвежий настрой. Лонг с нижней границы канала может быть интересен.");
                 }
