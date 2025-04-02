@@ -20,6 +20,7 @@
         #aiLog { max-height: 100px; overflow-y: auto; font-size: 12px; padding: 5px; background-color: #222; }
         h2 { font-size: 18px; margin: 10px 0 5px; }
         #aiRecommendations { color: #cccccc; }
+        input[type="number"] { width: 50px; margin: 0 5px; background-color: #222; color: white; border: 1px solid #333; }
     </style>
 </head>
 <body>
@@ -33,7 +34,11 @@
             <option value="15m" selected>15m</option>
             <option value="1h">1h</option>
             <option value="4h">4h</option>
-        </select>
+        </select> |
+        <label>Стакан: <input type="number" id="bookThresholdInput" min="0" step="1" value="5">%</label> 
+        <span id="currentBookThreshold">(Текущий: 5%)</span> |
+        <label>Рынок: <input type="number" id="marketThresholdInput" min="0" step="1" value="20">%</label> 
+        <span id="currentMarketThreshold">(Текущий: 20%)</span>
         <div id="tradeInfo"></div>
     </div>
     <div id="aiSection">
@@ -52,8 +57,8 @@
         const tradeSize = 100;
         const commissionRate = 0.0004;
         let timeframe = '15m';
-        let bookThreshold = 5;
-        let marketThreshold = 20;
+        let bookThreshold = localStorage.getItem('bookThreshold') ? parseFloat(localStorage.getItem('bookThreshold')) : 5;
+        let marketThreshold = localStorage.getItem('marketThreshold') ? parseFloat(localStorage.getItem('marketThreshold')) : 20;
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
@@ -88,6 +93,25 @@
                 backgroundColor: '#000000',
                 animation: { duration: 100 }
             }
+        });
+
+        // Инициализация значений порогов
+        document.getElementById('bookThresholdInput').value = bookThreshold;
+        document.getElementById('marketThresholdInput').value = marketThreshold;
+        document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
+        document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
+
+        // Обработчики изменения порогов
+        document.getElementById('bookThresholdInput').addEventListener('change', (e) => {
+            bookThreshold = parseFloat(e.target.value) || 5;
+            localStorage.setItem('bookThreshold', bookThreshold);
+            document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
+        });
+
+        document.getElementById('marketThresholdInput').addEventListener('change', (e) => {
+            marketThreshold = parseFloat(e.target.value) || 20;
+            localStorage.setItem('marketThreshold', marketThreshold);
+            document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
         });
 
         function gauss(x, h) {
@@ -200,7 +224,7 @@
                     const askVol = aiAnalyst.orderBook.asks.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
                     const bookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : ((askVol - bidVol) / bidVol * 100);
                     const marketData = this.getMarketData();
-                    const marketDiff = marketData.buyVol > marketData.sellVol ? ((marketData.buyVol - marketData.sellVol) / marketData.sellVol * 100) : ((marketData.sellVol - marketData.buyVol) / marketData.buyVol * 100);
+                    const marketDiff = marketData.diff;
                     const emaDistanceToTP = (type) => type === 'long' ? (upperNarrow - ema100Last) / (upperNarrow - price) : (ema100Last - lowerNarrow) / (price - lowerNarrow);
 
                     if ((price <= lowerWide || price === lowerWide) && bidVol > askVol && marketData.buyVol > marketData.sellVol) {
@@ -383,6 +407,10 @@
                     if (successRate > 0.7 && priceCorrelation > 0 && avgMarketDiff < marketThreshold) marketThreshold = Math.max(15, marketThreshold - 1);
                     else if (successRate < 0.3 && avgMarketDiff > marketThreshold) marketThreshold = Math.min(35, marketThreshold + 1);
 
+                    document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
+                    document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
+                    localStorage.setItem('bookThreshold', bookThreshold);
+                    localStorage.setItem('marketThreshold', marketThreshold);
                     console.log(`Пороги скорректированы: Стакан = ${bookThreshold}%, Рынок = ${marketThreshold}%`);
                 }
             }
