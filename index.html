@@ -186,8 +186,8 @@
         const chartBuffer = [];
         const tradeBuffer = [];
         const thresholdHistory = [];
-        const bookDiffHistory = []; // Для сглаживания стакана
-        const marketDiffHistory = []; // Для сглаживания рынка
+        const bookDiffHistory = [];
+        const marketDiffHistory = [];
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
@@ -206,40 +206,64 @@
                     if ((price <= lowerWide || price === lowerWide) && bidVol > askVol && marketData.buyVol > marketData.sellVol) {
                         const emaRisk = emaDistanceToTP('long');
                         const logEntry = [];
-                        logEntry.push(`Цена = ${price.toFixed(4)}, lowerWide = ${lowerWide.toFixed(4)}`);
+                        logEntry.push(`Цена = ${price.toFixed(4)}`);
                         logEntry.push(`Стакан: ${bookDiff.toFixed(1)}%`);
                         logEntry.push(`Рынок: ${marketDiff.toFixed(1)}%`);
-                        logEntry.push(`EMA 100 = ${ema100Last.toFixed(4)}, EMA 200 = ${ema200Last.toFixed(4)}`);
 
-                        if (bookDiff >= bookThreshold && marketDiff >= marketThreshold && (emaRisk > 0.25 || ema100Last < lowerWide)) {
-                            this.openTrade('long', price, time, upperNarrow);
-                            logEntry.push("Причина: Стакан и рынок подтверждают, EMA не мешает TP");
+                        let takeProfit = upperNarrow;
+                        let aiPrediction = aiAnalyst.predictOptimalPoints();
+                        const emaBetween = price < ema100Last && ema100Last < upperNarrow;
+
+                        if (emaBetween && emaRisk <= 0.25) {
+                            if (aiPrediction && aiPrediction.entry && aiPrediction.entry.type === 'long' && aiPrediction.exit.price > ema100Last) {
+                                takeProfit = upperNarrow; // ИИ считает, что EMA пробьется
+                                logEntry.push("ИИ: EMA будет пробита, TP на узкой границе");
+                            } else {
+                                takeProfit = ema100Last; // EMA близко, ставим TP на нее
+                                logEntry.push("TP установлен на EMA 100");
+                            }
+                        }
+
+                        if (bookDiff >= bookThreshold && marketDiff >= marketThreshold) {
+                            this.openTrade('long', price, time, takeProfit);
+                            logEntry.push("Причина: Стакан и рынок подтверждают");
                             this.updateAILog(`Лонг открыт: ${logEntry.join(', ')}`);
                             this.adjustThresholds(bookDiff, marketDiff, true);
                         } else {
                             if (bookDiff < bookThreshold) logEntry.push("Причина: % покупок в стакане ниже порога");
                             if (marketDiff < marketThreshold) logEntry.push("Причина: % покупок на рынке ниже порога");
-                            if (emaRisk <= 0.25) logEntry.push("Причина: EMA 100 близко к TP, риск отскока");
                             this.updateAILog(`Сделка не открыта: ${logEntry.join(', ')}`);
                             this.adjustThresholds(bookDiff, marketDiff, false);
                         }
                     } else if ((price >= upperWide || price === upperWide) && askVol > bidVol && marketData.sellVol > marketData.buyVol) {
                         const emaRisk = emaDistanceToTP('short');
                         const logEntry = [];
-                        logEntry.push(`Цена = ${price.toFixed(4)}, upperWide = ${upperWide.toFixed(4)}`);
+                        logEntry.push(`Цена = ${price.toFixed(4)}`);
                         logEntry.push(`Стакан: ${bookDiff.toFixed(1)}%`);
                         logEntry.push(`Рынок: ${marketDiff.toFixed(1)}%`);
-                        logEntry.push(`EMA 100 = ${ema100Last.toFixed(4)}, EMA 200 = ${ema200Last.toFixed(4)}`);
 
-                        if (bookDiff >= bookThreshold && marketDiff >= marketThreshold && (emaRisk > 0.25 || ema100Last > upperWide)) {
-                            this.openTrade('short', price, time, lowerNarrow);
-                            logEntry.push("Причина: Стакан и рынок подтверждают, EMA не мешает TP");
+                        let takeProfit = lowerNarrow;
+                        let aiPrediction = aiAnalyst.predictOptimalPoints();
+                        const emaBetween = lowerNarrow < ema100Last && ema100Last < price;
+
+                        if (emaBetween && emaRisk <= 0.25) {
+                            if (aiPrediction && aiPrediction.entry && aiPrediction.entry.type === 'short' && aiPrediction.exit.price < ema100Last) {
+                                takeProfit = lowerNarrow; // ИИ считает, что EMA пробьется
+                                logEntry.push("ИИ: EMA будет пробита, TP на узкой границе");
+                            } else {
+                                takeProfit = ema100Last; // EMA близко, ставим TP на нее
+                                logEntry.push("TP установлен на EMA 100");
+                            }
+                        }
+
+                        if (bookDiff >= bookThreshold && marketDiff >= marketThreshold) {
+                            this.openTrade('short', price, time, takeProfit);
+                            logEntry.push("Причина: Стакан и рынок подтверждают");
                             this.updateAILog(`Шорт открыт: ${logEntry.join(', ')}`);
                             this.adjustThresholds(bookDiff, marketDiff, true);
                         } else {
                             if (bookDiff < bookThreshold) logEntry.push("Причина: % продаж в стакане ниже порога");
                             if (marketDiff < marketThreshold) logEntry.push("Причина: % продаж на рынке ниже порога");
-                            if (emaRisk <= 0.25) logEntry.push("Причина: EMA 100 близко к TP, риск отскока");
                             this.updateAILog(`Сделка не открыта: ${logEntry.join(', ')}`);
                             this.adjustThresholds(bookDiff, marketDiff, false);
                         }
@@ -328,7 +352,11 @@
                 const recentTrades = tradeBuffer.filter(t => now - t.time <= 3000);
                 const buyVol = recentTrades.filter(t => t.isBuyer).reduce((sum, t) => sum + parseFloat(t.qty), 0);
                 const sellVol = recentTrades.filter(t => !t.isBuyer).reduce((sum, t) => sum + parseFloat(t.qty), 0);
-                return { buyVol, sellVol };
+                // Исправление NaN/Infinity
+                if (sellVol === 0 && buyVol > 0) return { buyVol, sellVol, diff: 100 };
+                if (buyVol === 0 && sellVol > 0) return { buyVol, sellVol, diff: -100 };
+                const diff = buyVol > sellVol ? ((buyVol - sellVol) / sellVol * 100) : -((sellVol - buyVol) / buyVol * 100);
+                return { buyVol, sellVol, diff: isFinite(diff) ? diff : 0 };
             }
 
             updateAILog(message) {
@@ -374,7 +402,9 @@
 
                 createModel() {
                     const model = tf.sequential();
-                    model.add(tf.layers.lstm({ units: 50, inputShape: [20, 5], returnSequences: true }));
+                    model.add(tf.layers.lstm({ units: 50, input 
+   
+Shape: [20, 5], returnSequences: true }));
                     model.add(tf.layers.lstm({ units: 50 }));
                     model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
                     model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
@@ -483,7 +513,6 @@
                     const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
                     const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
 
-                    // Сглаживание стакана и рынка
                     const bidVol = bidDepth;
                     const askVol = askDepth;
                     const bookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
@@ -492,7 +521,7 @@
                     const smoothedBookDiff = bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length;
 
                     const marketData = aiTrader.getMarketData();
-                    const marketDiff = marketData.buyVol > marketData.sellVol ? ((marketData.buyVol - marketData.sellVol) / marketData.sellVol * 100) : -((marketData.sellVol - marketData.buyVol) / marketData.buyVol * 100);
+                    const marketDiff = marketData.diff;
                     marketDiffHistory.push(marketDiff);
                     if (marketDiffHistory.length > 5) marketDiffHistory.shift();
                     const smoothedMarketDiff = marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length;
