@@ -73,6 +73,8 @@
                     { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Upper Envelope Narrow', data: [], borderColor: '#ffeb3b', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Lower Envelope Narrow', data: [], borderColor: '#ffeb3b', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'EMA 100', data: [], borderColor: '#d873f6', borderWidth: 2, pointRadius: 0, fill: false },
+                    { label: 'EMA 200', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] },
                     { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] }
                 ]
@@ -130,6 +132,21 @@
             return { nwe, sae };
         }
 
+        function calculateEMA(prices, period) {
+            const k = 2 / (period + 1);
+            const ema = [];
+            let sum = 0;
+            for (let i = 0; i < Math.min(period, prices.length); i++) { sum += prices[i]; }
+            let initialEMA = sum / Math.min(period, prices.length);
+            ema.push(initialEMA);
+            for (let i = Math.min(period, prices.length); i < prices.length; i++) {
+                const value = prices[i] * k + ema[ema.length - 1] * (1 - k);
+                ema.push(value);
+            }
+            for (let i = 0; i < Math.min(period, prices.length) - 1; i++) { ema.unshift(initialEMA); }
+            return ema;
+        }
+
         const candles = { '15m': [], '1h': [], '4h': [] };
         const closePrices = { '15m': [], '1h': [], '4h': [] };
         let lastPrice = null;
@@ -137,8 +154,8 @@
         let activeTrade = null;
         const tradeHistory = { '15m': [], '1h': [], '4h': [] };
         const tradeAnnotations = [];
-        let cachedNWE = null, cachedNWE2 = null;
-        let lastNWEUpdate = 0;
+        let cachedNWE = null, cachedNWE2 = null, cachedEMA100 = null, cachedEMA200 = null;
+        let lastNWEUpdate = 0, lastEMAUpdate = 0;
         const chartBuffer = [];
 
         class TradingAI {
@@ -252,7 +269,7 @@
                     radius: 4
                 });
 
-                chart.data.datasets[8].data.push(
+                chart.data.datasets[10].data.push(
                     { x: activeTrade.openTime, y: activeTrade.openPrice },
                     { x: closeTime, y: price },
                     { x: null, y: null }
@@ -346,6 +363,8 @@
             closePrices[timeframe].length = 0;
             cachedNWE = null;
             cachedNWE2 = null;
+            cachedEMA100 = null;
+            cachedEMA200 = null;
             fetchInitialCandles();
         });
 
@@ -420,6 +439,11 @@
                 cachedNWE2 = calculateNWE(closePrices[timeframe], mult2);
                 lastNWEUpdate = now;
             }
+            if (now - lastEMAUpdate > 60000 || !cachedEMA100 || !cachedEMA200) {
+                cachedEMA100 = calculateEMA(closePrices[timeframe], 100);
+                cachedEMA200 = calculateEMA(closePrices[timeframe], 200);
+                lastEMAUpdate = now;
+            }
 
             const { nwe, sae } = cachedNWE;
             const { nwe: nwe2, sae: sae2 } = cachedNWE2;
@@ -429,6 +453,9 @@
             const middle = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
             const upper2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae2 }));
             const lower2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae2 }));
+
+            const ema100Data = cachedEMA100.slice(-maxCandles).map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const ema200Data = cachedEMA200.slice(-maxCandles).map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
 
             const annotations = displayCandles.map((c, i) => ({
                 type: 'box',
@@ -471,8 +498,10 @@
             chart.data.datasets[4].data = middle;
             chart.data.datasets[5].data = upper2;
             chart.data.datasets[6].data = lower2;
-            chart.data.datasets[7].data = lastPriceData;
-            chart.data.datasets[8].data = chart.data.datasets[8].data; // Trade Lines
+            chart.data.datasets[7].data = ema100Data;
+            chart.data.datasets[8].data = ema200Data;
+            chart.data.datasets[9].data = lastPriceData;
+            chart.data.datasets[10].data = chart.data.datasets[10].data; // Trade Lines
             chart.update();
         }
 
