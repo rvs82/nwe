@@ -21,6 +21,9 @@
         h2 { font-size: 18px; margin: 10px 0 5px; }
         #aiRecommendations { color: #cccccc; }
         input[type="number"] { width: 50px; margin: 0 5px; background-color: #222; color: white; border: 1px solid #333; }
+        select { margin: 0 5px; background-color: #222; color: white; border: 1px solid #333; }
+        .threshold-note { font-size: 12px; color: #999; }
+        #thresholdControls { margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -34,11 +37,24 @@
             <option value="15m" selected>15m</option>
             <option value="1h">1h</option>
             <option value="4h">4h</option>
-        </select> |
-        <label>Стакан: <input type="number" id="bookThresholdInput" min="0" step="1" value="5">%</label> 
-        <span id="currentBookThreshold">(Текущий: 5%)</span> |
-        <label>Рынок: <input type="number" id="marketThresholdInput" min="0" step="1" value="20">%</label> 
-        <span id="currentMarketThreshold">(Текущий: 20%)</span>
+        </select>
+        <div id="thresholdControls">
+            <label>Стакан: <input type="number" id="bookThresholdInput" min="0" step="1" value="5">%</label> 
+            <span id="currentBookThreshold">(Текущий: 5%)</span> |
+            <label>Рынок: <input type="number" id="marketThresholdInput" min="0" step="1" value="20">%</label> 
+            <span id="currentMarketThreshold">(Текущий: 20%)</span> |
+            <label>Подтверждений: 
+                <select id="confirmCountInput">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </label>
+            <span id="currentConfirmCount">(Текущий: 3)</span>
+        </div>
+        <div class="threshold-note">Изменения применяются автоматически</div>
         <div id="tradeInfo"></div>
     </div>
     <div id="aiSection">
@@ -59,6 +75,10 @@
         let timeframe = '15m';
         let bookThreshold = localStorage.getItem('bookThreshold') ? parseFloat(localStorage.getItem('bookThreshold')) : 5;
         let marketThreshold = localStorage.getItem('marketThreshold') ? parseFloat(localStorage.getItem('marketThreshold')) : 20;
+        let confirmCount = localStorage.getItem('confirmCount') ? parseInt(localStorage.getItem('confirmCount')) : 3;
+        let longConfirm = 0;
+        let shortConfirm = 0;
+        const smoothingWindow = 5; // Размер окна сглаживания
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
@@ -95,13 +115,15 @@
             }
         });
 
-        // Инициализация значений порогов
+        // Инициализация значений порогов и подтверждений
         document.getElementById('bookThresholdInput').value = bookThreshold;
         document.getElementById('marketThresholdInput').value = marketThreshold;
+        document.getElementById('confirmCountInput').value = confirmCount;
         document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
         document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
+        document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
 
-        // Обработчики изменения порогов
+        // Обработчики изменения порогов и подтверждений
         document.getElementById('bookThresholdInput').addEventListener('change', (e) => {
             bookThreshold = parseFloat(e.target.value) || 5;
             localStorage.setItem('bookThreshold', bookThreshold);
@@ -112,6 +134,12 @@
             marketThreshold = parseFloat(e.target.value) || 20;
             localStorage.setItem('marketThreshold', marketThreshold);
             document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
+        });
+
+        document.getElementById('confirmCountInput').addEventListener('change', (e) => {
+            confirmCount = parseInt(e.target.value) || 3;
+            localStorage.setItem('confirmCount', confirmCount);
+            document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
         });
 
         function gauss(x, h) {
@@ -222,9 +250,17 @@
                     const ema200Last = ema200[ema200.length - 1];
                     const bidVol = aiAnalyst.orderBook.bids.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
                     const askVol = aiAnalyst.orderBook.asks.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    const bookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : ((askVol - bidVol) / bidVol * 100);
+                    const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
+                    bookDiffHistory.push(rawBookDiff);
+                    if (bookDiffHistory.length > smoothingWindow) bookDiffHistory.shift();
+                    const bookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
+
                     const marketData = this.getMarketData();
-                    const marketDiff = marketData.diff;
+                    const rawMarketDiff = marketData.buyVol > marketData.sellVol ? ((marketData.buyVol - marketData.sellVol) / marketData.sellVol * 100) : -((marketData.sellVol - marketData.buyVol) / marketData.buyVol * 100);
+                    marketDiffHistory.push(marketData.diff);
+                    if (marketDiffHistory.length > smoothingWindow) marketDiffHistory.shift();
+                    const marketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
+
                     const emaDistanceToTP = (type) => type === 'long' ? (upperNarrow - ema100Last) / (upperNarrow - price) : (ema100Last - lowerNarrow) / (price - lowerNarrow);
 
                     if ((price <= lowerWide || price === lowerWide) && bidVol > askVol && marketData.buyVol > marketData.sellVol) {
@@ -249,11 +285,20 @@
                         }
 
                         if (bookDiff >= bookThreshold && marketDiff >= marketThreshold) {
-                            this.openTrade('long', price, time, takeProfit);
-                            logEntry.push("Причина: Стакан и рынок подтверждают");
-                            this.updateAILog(`Лонг открыт: ${logEntry.join(', ')}`);
-                            this.adjustThresholds(bookDiff, marketDiff, true);
+                            longConfirm++;
+                            logEntry.push(`Подтверждений лонга: ${longConfirm}/${confirmCount}`);
+                            shortConfirm = 0;
+                            if (longConfirm >= confirmCount) {
+                                this.openTrade('long', price, time, takeProfit);
+                                logEntry.push("Причина: Стакан и рынок подтверждены");
+                                this.updateAILog(`Лонг открыт: ${logEntry.join(', ')}`);
+                                this.adjustThresholds(bookDiff, marketDiff, true);
+                                longConfirm = 0;
+                            } else {
+                                this.updateAILog(`Ожидание подтверждения: ${logEntry.join(', ')}`);
+                            }
                         } else {
+                            longConfirm = 0;
                             if (bookDiff < bookThreshold) logEntry.push("Причина: % покупок в стакане ниже порога");
                             if (marketDiff < marketThreshold) logEntry.push("Причина: % покупок на рынке ниже порога");
                             this.updateAILog(`Сделка не открыта: ${logEntry.join(', ')}`);
@@ -281,16 +326,28 @@
                         }
 
                         if (bookDiff >= bookThreshold && marketDiff >= marketThreshold) {
-                            this.openTrade('short', price, time, takeProfit);
-                            logEntry.push("Причина: Стакан и рынок подтверждают");
-                            this.updateAILog(`Шорт открыт: ${logEntry.join(', ')}`);
-                            this.adjustThresholds(bookDiff, marketDiff, true);
+                            shortConfirm++;
+                            logEntry.push(`Подтверждений шорта: ${shortConfirm}/${confirmCount}`);
+                            longConfirm = 0;
+                            if (shortConfirm >= confirmCount) {
+                                this.openTrade('short', price, time, takeProfit);
+                                logEntry.push("Причина: Стакан и рынок подтверждены");
+                                this.updateAILog(`Шорт открыт: ${logEntry.join(', ')}`);
+                                this.adjustThresholds(bookDiff, marketDiff, true);
+                                shortConfirm = 0;
+                            } else {
+                                this.updateAILog(`Ожидание подтверждения: ${logEntry.join(', ')}`);
+                            }
                         } else {
+                            shortConfirm = 0;
                             if (bookDiff < bookThreshold) logEntry.push("Причина: % продаж в стакане ниже порога");
                             if (marketDiff < marketThreshold) logEntry.push("Причина: % продаж на рынке ниже порога");
                             this.updateAILog(`Сделка не открыта: ${logEntry.join(', ')}`);
                             this.adjustThresholds(bookDiff, marketDiff, false);
                         }
+                    } else {
+                        longConfirm = 0;
+                        shortConfirm = 0;
                     }
                 } else if (activeTrade) {
                     this.updateTakeProfit(time, lowerNarrow, upperNarrow);
@@ -422,207 +479,210 @@
                 setTimeout(initAI, 100);
                 return;
             }
-            class MarketAI {
-                constructor() {
-                    this.model = this.createModel();
-                    this.isTrained = false;
-                    this.orderBook = { bids: [], asks: [] };
-                    this.bestEntry = null;
-                    this.bestExit = null;
-                }
+            tf.setBackend('cpu').then(() => {
+                class MarketAI {
+                    constructor() {
+                        this.model = this.createModel();
+                        this.isTrained = false;
+                        this.orderBook = { bids: [], asks: [] };
+                        this.bestEntry = null;
+                        this.bestExit = null;
+                    }
 
-                createModel() {
-                    const model = tf.sequential();
-                    model.add(tf.layers.lstm({ units: 50, inputShape: [20, 5], returnSequences: true }));
-                    model.add(tf.layers.lstm({ units: 50 }));
-                    model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
-                    model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
-                    return model;
-                }
+                    createModel() {
+                        const model = tf.sequential();
+                        model.add(tf.layers.lstm({ units: 20, inputShape: [20, 5], returnSequences: true }));
+                        model.add(tf.layers.lstm({ units: 20 }));
+                        model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
+                        model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
+                        return model;
+                    }
 
-                async trainModel() {
-                    if (closePrices[timeframe].length < 40 || tradeHistory[timeframe].length < 10) return;
-                    const lookback = 20;
-                    const xs = [];
-                    const ys = [];
-                    const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
-                    const { nwe: nweNarrow } = calculateNWE(closePrices[timeframe], mult2);
-                    const ema100 = calculateEMA(closePrices[timeframe], 100);
-                    const rsi = calculateRSI(closePrices[timeframe]);
-                    for (let i = lookback; i < closePrices[timeframe].length - 1; i++) {
+                    async trainModel() {
+                        if (closePrices[timeframe].length < 40 || tradeHistory[timeframe].length < 10) return;
+                        const lookback = 20;
+                        const xs = [];
+                        const ys = [];
+                        const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
+                        const { nwe: nweNarrow } = calculateNWE(closePrices[timeframe], mult2);
+                        const ema100 = calculateEMA(closePrices[timeframe], 100);
+                        const rsi = calculateRSI(closePrices[timeframe]);
+                        for (let i = lookback; i < closePrices[timeframe].length - 1; i++) {
+                            const input = [];
+                            for (let j = i - lookback; j < i; j++) {
+                                input.push([closePrices[timeframe][j], nweWide[j] - closePrices[timeframe][j], ema100[j] - closePrices[timeframe][j], volumes[timeframe][j] || 0, rsi[j - 14] || 50]);
+                            }
+                            const trade = tradeHistory[timeframe].find(t => Math.abs(new Date(t.openTime) - new Date(candles[timeframe][i].x)) < 15*60*1000);
+                            const profit = trade ? trade.profit : 0;
+                            xs.push(input);
+                            ys.push(profit > 0 && trade && trade.type === 'long' ? [1, 0] : [0, 1]);
+                        }
+                        if (xs.length < 5) return;
+                        const xsTensor = tf.tensor3d(xs);
+                        const ysTensor = tf.tensor2d(ys);
+                        await this.model.fit(xsTensor, ysTensor, { epochs: 200, batchSize: 32, callbacks: { onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`) } });
+                        this.isTrained = true;
+                        tf.dispose([xsTensor, ysTensor]);
+                    }
+
+                    async predictOptimalPoints() {
+                        if (!this.isTrained || closePrices[timeframe].length < 20) return null;
+                        const lookback = 20;
+                        const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
+                        const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices[timeframe], mult2);
+                        const ema100 = calculateEMA(closePrices[timeframe], 100);
+                        const ema200 = calculateEMA(closePrices[timeframe], 200);
+                        const rsi = calculateRSI(closePrices[timeframe]);
                         const input = [];
-                        for (let j = i - lookback; j < i; j++) {
-                            input.push([closePrices[timeframe][j], nweWide[j] - closePrices[timeframe][j], ema100[j] - closePrices[timeframe][j], volumes[timeframe][j] || 0, rsi[j - 14] || 50]);
+                        for (let i = closePrices[timeframe].length - lookback; i < closePrices[timeframe].length; i++) {
+                            input.push([closePrices[timeframe][i], nweWide[i] - closePrices[timeframe][i], ema100[i] - closePrices[timeframe][i], volumes[timeframe][i] || 0, rsi[i - 14] || 50]);
                         }
-                        const trade = tradeHistory[timeframe].find(t => Math.abs(new Date(t.openTime) - new Date(candles[timeframe][i].x)) < 15*60*1000);
-                        const profit = trade ? trade.profit : 0;
-                        xs.push(input);
-                        ys.push(profit > 0 && trade && trade.type === 'long' ? [1, 0] : [0, 1]);
+                        const inputTensor = tf.tensor3d([input]);
+                        const prediction = this.model.predict(inputTensor);
+                        const result = await prediction.data();
+                        tf.dispose([inputTensor, prediction]);
+                        const longProb = result[0];
+                        const shortProb = result[1];
+                        const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
+                        const middle = nweNarrow[nweNarrow.length - 1];
+                        const upperNarrow = middle + saeNarrow;
+                        const lowerNarrow = middle - saeNarrow;
+                        const upperWide = middle + calculateNWE(closePrices[timeframe], mult).sae;
+                        const lowerWide = middle - calculateNWE(closePrices[timeframe], mult).sae;
+                        const ema100Last = ema100[ema100.length - 1];
+                        const ema200Last = ema200[ema200.length - 1];
+                        const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
+                        const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                        const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                        let entry = null, exit = null;
+                        if (longProb > shortProb && ema100Last > ema200Last && lastPrice < middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
+                            entry = { type: 'long', price: lowerWide * 0.995, time: new Date() };
+                            exit = { type: 'long', price: upperNarrow * 1.005, time: new Date() };
+                        } else if (shortProb > longProb && ema100Last < ema200Last && lastPrice > middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
+                            entry = { type: 'short', price: upperWide * 1.005, time: new Date() };
+                            exit = { type: 'short', price: lowerNarrow * 0.995, time: new Date() };
+                        }
+                        if (entry && exit) {
+                            this.bestEntry = entry;
+                            this.bestExit = exit;
+                            return { entry, exit };
+                        }
+                        return null;
                     }
-                    if (xs.length < 5) return;
-                    const xsTensor = tf.tensor3d(xs);
-                    const ysTensor = tf.tensor2d(ys);
-                    await this.model.fit(xsTensor, ysTensor, { epochs: 200, batchSize: 32, callbacks: { onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`) } });
-                    this.isTrained = true;
-                    tf.dispose([xsTensor, ysTensor]);
-                }
 
-                async predictOptimalPoints() {
-                    if (!this.isTrained || closePrices[timeframe].length < 20) return null;
-                    const lookback = 20;
-                    const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
-                    const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices[timeframe], mult2);
-                    const ema100 = calculateEMA(closePrices[timeframe], 100);
-                    const ema200 = calculateEMA(closePrices[timeframe], 200);
-                    const rsi = calculateRSI(closePrices[timeframe]);
-                    const input = [];
-                    for (let i = closePrices[timeframe].length - lookback; i < closePrices[timeframe].length; i++) {
-                        input.push([closePrices[timeframe][i], nweWide[i] - closePrices[timeframe][i], ema100[i] - closePrices[timeframe][i], volumes[timeframe][i] || 0, rsi[i - 14] || 50]);
-                    }
-                    const inputTensor = tf.tensor3d([input]);
-                    const prediction = this.model.predict(inputTensor);
-                    const result = await prediction.data();
-                    tf.dispose([inputTensor, prediction]);
-                    const longProb = result[0];
-                    const shortProb = result[1];
-                    const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
-                    const middle = nweNarrow[nweNarrow.length - 1];
-                    const upperNarrow = middle + saeNarrow;
-                    const lowerNarrow = middle - saeNarrow;
-                    const upperWide = middle + calculateNWE(closePrices[timeframe], mult).sae;
-                    const lowerWide = middle - calculateNWE(closePrices[timeframe], mult).sae;
-                    const ema100Last = ema100[ema100.length - 1];
-                    const ema200Last = ema200[ema200.length - 1];
-                    const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
-                    const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    let entry = null, exit = null;
-                    if (longProb > shortProb && ema100Last > ema200Last && lastPrice < middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
-                        entry = { type: 'long', price: lowerWide * 0.995, time: new Date() };
-                        exit = { type: 'long', price: upperNarrow * 1.005, time: new Date() };
-                    } else if (shortProb > longProb && ema100Last < ema200Last && lastPrice > middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
-                        entry = { type: 'short', price: upperWide * 1.005, time: new Date() };
-                        exit = { type: 'short', price: lowerNarrow * 0.995, time: new Date() };
-                    }
-                    if (entry && exit) {
-                        this.bestEntry = entry;
-                        this.bestExit = exit;
-                        return { entry, exit };
-                    }
-                    return null;
-                }
+                    async analyzeMarket() {
+                        const analysis = [];
+                        const displayCandles = candles[timeframe].slice(-maxCandles);
+                        if (displayCandles.length === 0) return "Данные еще не загружены, анализ невозможен.";
+                        const now = Date.now();
+                        if (now - lastNWEUpdate > 5000 || !cachedNWE || !cachedNWE2) {
+                            cachedNWE = calculateNWE(closePrices[timeframe], mult);
+                            cachedNWE2 = calculateNWE(closePrices[timeframe], mult2);
+                            lastNWEUpdate = now;
+                        }
+                        if (now - lastEMAUpdate > 60000 || !cachedEMA100 || closePrices[timeframe].length !== cachedEMA100.length) {
+                            cachedEMA100 = calculateEMA(closePrices[timeframe], 100);
+                            cachedEMA200 = calculateEMA(closePrices[timeframe], 200);
+                            cachedFib = calculateFibonacciLevels(closePrices[timeframe]);
+                            lastEMAUpdate = now;
+                        }
+                        cachedRSI = calculateRSI(closePrices[timeframe]);
+                        const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
+                        const middle = cachedNWE.nwe[cachedNWE.nwe.length - 1];
+                        const upperWide = middle + cachedNWE.sae;
+                        const lowerWide = middle - cachedNWE.sae;
+                        const upperNarrow = middle + cachedNWE2.sae;
+                        const lowerNarrow = middle - cachedNWE2.sae;
+                        const ema100Last = cachedEMA100[cachedEMA100.length - 1];
+                        const ema200Last = cachedEMA200[cachedEMA200.length - 1];
+                        const rsiLast = cachedRSI[cachedRSI.length - 1];
+                        const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                        const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                        const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
 
-                async analyzeMarket() {
-                    const analysis = [];
-                    const displayCandles = candles[timeframe].slice(-maxCandles);
-                    if (displayCandles.length === 0) return "Данные еще не загружены, анализ невозможен.";
-                    const now = Date.now();
-                    if (now - lastNWEUpdate > 5000 || !cachedNWE || !cachedNWE2) {
-                        cachedNWE = calculateNWE(closePrices[timeframe], mult);
-                        cachedNWE2 = calculateNWE(closePrices[timeframe], mult2);
-                        lastNWEUpdate = now;
-                    }
-                    if (now - lastEMAUpdate > 60000 || !cachedEMA100 || closePrices[timeframe].length !== cachedEMA100.length) {
-                        cachedEMA100 = calculateEMA(closePrices[timeframe], 100);
-                        cachedEMA200 = calculateEMA(closePrices[timeframe], 200);
-                        cachedFib = calculateFibonacciLevels(closePrices[timeframe]);
-                        lastEMAUpdate = now;
-                    }
-                    cachedRSI = calculateRSI(closePrices[timeframe]);
-                    const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
-                    const middle = cachedNWE.nwe[cachedNWE.nwe.length - 1];
-                    const upperWide = middle + cachedNWE.sae;
-                    const lowerWide = middle - cachedNWE.sae;
-                    const upperNarrow = middle + cachedNWE2.sae;
-                    const lowerNarrow = middle - cachedNWE2.sae;
-                    const ema100Last = cachedEMA100[cachedEMA100.length - 1];
-                    const ema200Last = cachedEMA200[cachedEMA200.length - 1];
-                    const rsiLast = cachedRSI[cachedRSI.length - 1];
-                    const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
+                        const bidVol = bidDepth;
+                        const askVol = askDepth;
+                        const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
+                        bookDiffHistory.push(rawBookDiff);
+                        if (bookDiffHistory.length > smoothingWindow) bookDiffHistory.shift();
+                        const smoothedBookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
 
-                    const bidVol = bidDepth;
-                    const askVol = askDepth;
-                    const bookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
-                    bookDiffHistory.push(bookDiff);
-                    if (bookDiffHistory.length > 5) bookDiffHistory.shift();
-                    const smoothedBookDiff = bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length;
+                        const marketData = aiTrader.getMarketData();
+                        const rawMarketDiff = marketData.buyVol > marketData.sellVol ? ((marketData.buyVol - marketData.sellVol) / marketData.sellVol * 100) : -((marketData.sellVol - marketData.buyVol) / marketData.buyVol * 100);
+                        marketDiffHistory.push(marketData.diff);
+                        if (marketDiffHistory.length > smoothingWindow) marketDiffHistory.shift();
+                        const smoothedMarketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
 
-                    const marketData = aiTrader.getMarketData();
-                    const marketDiff = marketData.diff;
-                    marketDiffHistory.push(marketDiff);
-                    if (marketDiffHistory.length > 5) marketDiffHistory.shift();
-                    const smoothedMarketDiff = marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length;
-
-                    analysis.push(`Цена около ${lastPrice.toFixed(3)}. Каналы: широкий ${lowerWide.toFixed(3)}-${upperWide.toFixed(3)}, узкий ${lowerNarrow.toFixed(3)}-${upperNarrow.toFixed(3)}.`);
-                    if (ema100Last > ema200Last) {
-                        analysis.push("Тренд восходящий, лонги усилены.");
-                    } else {
-                        analysis.push("Тренд нисходящий, шорты усилены.");
-                    }
-                    const emaDistance = Math.abs(lastPrice - ema100Last) / ema100Last;
-                    if (emaDistance < 0.005) {
-                        if (lastPrice > ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
-                            analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — поддержка, пробитие вверх вероятно.`);
-                        } else if (lastPrice < ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
-                            analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — сопротивление, пробитие вниз вероятно.`);
+                        analysis.push(`Цена около ${lastPrice.toFixed(3)}. Каналы: широкий ${lowerWide.toFixed(3)}-${upperWide.toFixed(3)}, узкий ${lowerNarrow.toFixed(3)}-${upperNarrow.toFixed(3)}.`);
+                        if (ema100Last > ema200Last) {
+                            analysis.push("Тренд восходящий, лонги усилены.");
                         } else {
-                            analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — ${lastPrice > ema100Last ? 'поддержка' : 'сопротивление'}, цена тестирует уровень.`);
+                            analysis.push("Тренд нисходящий, шорты усилены.");
                         }
+                        const emaDistance = Math.abs(lastPrice - ema100Last) / ema100Last;
+                        if (emaDistance < 0.005) {
+                            if (lastPrice > ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
+                                analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — поддержка, пробитие вверх вероятно.`);
+                            } else if (lastPrice < ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
+                                analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — сопротивление, пробитие вниз вероятно.`);
+                            } else {
+                                analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — ${lastPrice > ema100Last ? 'поддержка' : 'сопротивление'}, цена тестирует уровень.`);
+                            }
+                        }
+                        analysis.push(`Стакан: <span style="color:${smoothedBookDiff >= 0 ? '#00FF00' : '#FF0000'}">${smoothedBookDiff.toFixed(1)}%</span> | Рынок: <span style="color:${smoothedMarketDiff >= 0 ? '#00FF00' : '#FF0000'}">${smoothedMarketDiff.toFixed(1)}%</span>`);
+                        if (fearGreedIndex) {
+                            analysis.push(`Индекс страха и жадности: ${fearGreedIndex.value}, настроения ${fearGreedIndex.value < 30 ? 'напуганы' : fearGreedIndex.value > 70 ? 'жадные' : 'нейтральны'}.`);
+                        }
+                        const signal = await this.predictOptimalPoints();
+                        if (signal) {
+                            const directionColor = signal.entry.type === 'long' ? '#00ff00' : '#ff0000';
+                            analysis.push(`Рекомендую <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> вход на ${signal.entry.price.toFixed(3)} и выход на ${signal.exit.price.toFixed(3)} для большей прибыли.`);
+                            document.getElementById('tradeAlert').style.display = 'block';
+                            document.getElementById('tradeAlert').innerHTML = `Рекомендация ИИ: <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> | Вход: ${signal.entry.price.toFixed(3)} | Выход: ${signal.exit.price.toFixed(3)}`;
+                            if (document.getElementById('muteSound').checked) alertSound.play();
+                        } else {
+                            analysis.push("Сейчас нет улучшенных точек для вашей системы.");
+                            document.getElementById('tradeAlert').style.display = 'none';
+                        }
+                        return analysis.join('<br>');
                     }
-                    analysis.push(`Стакан: <span style="color:${smoothedBookDiff >= 0 ? '#00FF00' : '#FF0000'}">${smoothedBookDiff.toFixed(1)}%</span> | Рынок: <span style="color:${smoothedMarketDiff >= 0 ? '#00FF00' : '#FF0000'}">${smoothedMarketDiff.toFixed(1)}%</span>`);
-                    if (fearGreedIndex) {
-                        analysis.push(`Индекс страха и жадности: ${fearGreedIndex.value}, настроения ${fearGreedIndex.value < 30 ? 'напуганы' : fearGreedIndex.value > 70 ? 'жадные' : 'нейтральны'}.`);
+
+                    provideRecommendations() {
+                        const recommendations = [];
+                        const fibLevels = cachedFib || calculateFibonacciLevels(closePrices[timeframe]);
+                        const closestFib = Object.entries(fibLevels).reduce((prev, curr) => Math.abs(lastPrice - curr[1]) < Math.abs(lastPrice - prev[1]) ? curr : prev);
+                        recommendations.push(`Ближайший уровень Фибоначчи (${closestFib[0]}%) на ${closestFib[1].toFixed(3)} может быть целью или поддержкой.`);
+                        const lossTrades = tradeHistory[timeframe].filter(t => t.profit <= 0);
+                        if (lossTrades.length > 0) {
+                            recommendations.push("Для большей прибыли сдвиньте вход на 0.5% от канала и выход на 2% от средней линии.");
+                        }
+                        return recommendations.join('<br>');
                     }
-                    const signal = await this.predictOptimalPoints();
-                    if (signal) {
-                        const directionColor = signal.entry.type === 'long' ? '#00ff00' : '#ff0000';
-                        analysis.push(`Рекомендую <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> вход на ${signal.entry.price.toFixed(3)} и выход на ${signal.exit.price.toFixed(3)} для большей прибыли.`);
-                        document.getElementById('tradeAlert').style.display = 'block';
-                        document.getElementById('tradeAlert').innerHTML = `Рекомендация ИИ: <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> | Вход: ${signal.entry.price.toFixed(3)} | Выход: ${signal.exit.price.toFixed(3)}`;
-                        if (document.getElementById('muteSound').checked) alertSound.play();
-                    } else {
-                        analysis.push("Сейчас нет улучшенных точек для вашей системы.");
-                        document.getElementById('tradeAlert').style.display = 'none';
+
+                    async trainAndUpdate() {
+                        const now = Date.now();
+                        if (now - lastEMAUpdate > 60000 || activeTrade === null) {
+                            await this.trainModel();
+                        }
+                        const signal = await this.predictOptimalPoints();
+                        if (signal) {
+                            this.bestEntry = signal.entry;
+                            this.bestExit = signal.exit;
+                            tradeAnnotations.push({ type: 'point', xValue: signal.entry.time, yValue: signal.entry.price, backgroundColor: signal.entry.type === 'long' ? '#00ff00' : '#ff0000', borderColor: '#ffffff', radius: 6, label: { content: 'Лучший вход (ИИ)', enabled: true, position: 'top' } });
+                            tradeAnnotations.push({ type: 'point', xValue: signal.exit.time, yValue: signal.exit.price, backgroundColor: '#00c108', borderColor: '#ffffff', radius: 6, label: { content: 'Лучший выход (ИИ)', enabled: true, position: 'top' } });
+                        }
+                        document.getElementById('aiAnalysis').innerHTML = await this.analyzeMarket();
+                        document.getElementById('aiRecommendations').innerHTML = this.provideRecommendations();
+                        updateChart();
                     }
-                    return analysis.join('<br>');
                 }
 
-                provideRecommendations() {
-                    const recommendations = [];
-                    const fibLevels = cachedFib || calculateFibonacciLevels(closePrices[timeframe]);
-                    const closestFib = Object.entries(fibLevels).reduce((prev, curr) => Math.abs(lastPrice - curr[1]) < Math.abs(lastPrice - prev[1]) ? curr : prev);
-                    recommendations.push(`Ближайший уровень Фибоначчи (${closestFib[0]}%) на ${closestFib[1].toFixed(3)} может быть целью или поддержкой.`);
-                    const lossTrades = tradeHistory[timeframe].filter(t => t.profit <= 0);
-                    if (lossTrades.length > 0) {
-                        recommendations.push("Для большей прибыли сдвиньте вход на 0.5% от канала и выход на 2% от средней линии.");
-                    }
-                    return recommendations.join('<br>');
-                }
-
-                async trainAndUpdate() {
-                    const now = Date.now();
-                    if (now - lastEMAUpdate > 60000 || activeTrade === null) {
-                        await this.trainModel();
-                    }
-                    const signal = await this.predictOptimalPoints();
-                    if (signal) {
-                        this.bestEntry = signal.entry;
-                        this.bestExit = signal.exit;
-                        tradeAnnotations.push({ type: 'point', xValue: signal.entry.time, yValue: signal.entry.price, backgroundColor: signal.entry.type === 'long' ? '#00ff00' : '#ff0000', borderColor: '#ffffff', radius: 6, label: { content: 'Лучший вход (ИИ)', enabled: true, position: 'top' } });
-                        tradeAnnotations.push({ type: 'point', xValue: signal.exit.time, yValue: signal.exit.price, backgroundColor: '#00c108', borderColor: '#ffffff', radius: 6, label: { content: 'Лучший выход (ИИ)', enabled: true, position: 'top' } });
-                    }
-                    document.getElementById('aiAnalysis').innerHTML = await this.analyzeMarket();
-                    document.getElementById('aiRecommendations').innerHTML = this.provideRecommendations();
-                    updateChart();
-                }
-            }
-
-            aiTrader = new TradingAI();
-            aiAnalyst = new MarketAI();
-            fetchInitialCandles();
-            fetchFearGreedIndex();
+                aiTrader = new TradingAI();
+                aiAnalyst = new MarketAI();
+                fetchInitialCandles();
+                fetchFearGreedIndex();
+                console.log('Backend:', tf.getBackend());
+            });
         }
 
         initAI();
