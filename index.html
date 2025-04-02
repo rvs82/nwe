@@ -167,7 +167,7 @@
         const closePrices = { '15m': [], '1h': [], '4h': [] };
         const volumes = { '15m': [], '1h': [], '4h': [] };
         let lastPrice = null;
-        let lastPriceTime = null 
+        let lastPriceTime = null;
         let activeTrade = null;
         const tradeHistory = { '15m': [], '1h': [], '4h': [] };
         const tradeAnnotations = [];
@@ -180,13 +180,22 @@
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
-                if (!activeTrade) {
-                    if (price <= lowerWide) {
+                if (!activeTrade && price && time && lowerWide && upperWide && lowerNarrow && upperNarrow) {
+                    const ema100 = cachedEMA100 || calculateEMA(closePrices[timeframe], 100);
+                    const ema200 = cachedEMA200 || calculateEMA(closePrices[timeframe], 200);
+                    const ema100Last = ema100[ema100.length - 1];
+                    const ema200Last = ema200[ema200.length - 1];
+
+                    if (price <= lowerWide && ema100Last > ema200Last) {
+                        console.log(`Opening LONG: price=${price.toFixed(4)}, lowerWide=${lowerWide.toFixed(4)}, TP=${upperNarrow.toFixed(4)}`);
                         this.openTrade('long', price, time, upperNarrow);
-                    } else if (price >= upperWide) {
+                    } else if (price >= upperWide && ema100Last < ema200Last) {
+                        console.log(`Opening SHORT: price=${price.toFixed(4)}, upperWide=${upperWide.toFixed(4)}, TP=${lowerNarrow.toFixed(4)}`);
                         this.openTrade('short', price, time, lowerNarrow);
+                    } else {
+                        console.log(`No trade: price=${price.toFixed(4)}, lowerWide=${lowerWide.toFixed(4)}, upperWide=${upperWide.toFixed(4)}, ema100=${ema100Last.toFixed(4)}, ema200=${ema200Last.toFixed(4)}`);
                     }
-                } else {
+                } else if (activeTrade) {
                     this.updateTakeProfit(time, lowerNarrow, upperNarrow);
                     this.checkCloseTrade(price);
                     this.updateTradeInfo();
@@ -196,10 +205,10 @@
             openTrade(type, price, time, takeProfit) {
                 activeTrade = { type, openPrice: price, openTime: time, takeProfit, size: tradeSize, startTime: Date.now() };
                 const tradeColor = type === 'long' ? '#00ff00' : '#ff0000';
-                const minTime = candles[timeframe].length > 0 ? candles[timeframe][0].x.getTime() : time.getTime() - 15*60*1000;
-                const maxTime = candles[timeframe].length > 0 ? candles[timeframe][candles[timeframe].length - 1].x.getTime() + 15*60*1000 : time.getTime() + 15*60*1000;
-                tradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: price, yMax: price, borderColor: '#f23645', borderWidth: 1, id: 'openLine' });
-                tradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: takeProfit, yMax: takeProfit, borderColor: '#00c108', borderWidth: 1, id: 'tpLine' });
+                const minTime = candles[timeframe][0]?.x.getTime() || time.getTime() - 15*60*1000;
+                const maxTime = candles[timeframe][candles[timeframe].length - 1]?.x.getTime() + 15*60*1000 || time.getTime() + 15*60*1000;
+                tradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: price, yMax: price, borderColor: '#FF0000', borderWidth: 2, id: 'openLine' });
+                tradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: takeProfit, yMax: takeProfit, borderColor: '#00FF00', borderWidth: 2, id: 'tpLine' });
                 this.updateTradeInfo();
                 updateStats();
                 updateTradeLog();
@@ -210,8 +219,8 @@
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
-                const minTime = candles[timeframe].length > 0 ? candles[timeframe][0].x.getTime() : time.getTime() - 15*60*1000;
-                const maxTime = candles[timeframe].length > 0 ? candles[timeframe][candles[timeframe].length - 1].x.getTime() + 15*60*1000 : time.getTime() + 15*60*1000;
+                const minTime = candles[timeframe][0]?.x.getTime() || time.getTime() - 15*60*1000;
+                const maxTime = candles[timeframe][candles[timeframe].length - 1]?.x.getTime() + 15*60*1000 || time.getTime() + 15*60*1000;
                 if (tpAnnotation) {
                     tpAnnotation.xMin = minTime;
                     tpAnnotation.xMax = maxTime;
@@ -222,8 +231,10 @@
 
             checkCloseTrade(price) {
                 if (activeTrade.type === 'long' && price >= activeTrade.takeProfit) {
+                    console.log(`Closing LONG: price=${price.toFixed(4)}, TP=${activeTrade.takeProfit.toFixed(4)}`);
                     this.closeTrade(price);
                 } else if (activeTrade.type === 'short' && price <= activeTrade.takeProfit) {
+                    console.log(`Closing SHORT: price=${price.toFixed(4)}, TP=${activeTrade.takeProfit.toFixed(4)}`);
                     this.closeTrade(price);
                 }
             }
@@ -637,6 +648,12 @@
             const ema200 = cachedEMA200 || calculateEMA(closePrices[timeframe], 200);
             const ema100Data = ema100.slice(-maxCandles).map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
             const ema200Data = ema200.slice(-maxCandles).map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const bidDepth = aiAnalyst.orderBook.bids.reduce((sum, [price, vol]) => sum + parseFloat(price) * parseFloat(vol), 0) / aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0) || 0;
+            const askDepth = aiAnalyst.orderBook.asks.reduce((sum, [price, vol]) => sum + parseFloat(price) * parseFloat(vol), 0) / aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0) || 0;
+            const avgOrderBookPrice = (bidDepth + askDepth) / 2;
+            const bidVol = aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+            const askVol = aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+            const orderBookColor = bidVol > askVol ? '#00FF00' : '#FF0000';
             const annotations = displayCandles.map((c, i) => ({
                 type: 'box',
                 xMin: c.x.getTime() - 300000,
@@ -646,7 +663,17 @@
                 backgroundColor: 'rgba(0, 0, 0, 0)',
                 borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
                 borderWidth: 1
-            })).concat(tradeAnnotations);
+            })).concat(tradeAnnotations).concat([{
+                type: 'box',
+                xMin: displayCandles[displayCandles.length - 1].x.getTime() - 300000,
+                xMax: displayCandles[displayCandles.length - 1].x.getTime() + 300000,
+                yMin: avgOrderBookPrice - 0.001,
+                yMax: avgOrderBookPrice + 0.001,
+                backgroundColor: orderBookColor,
+                borderColor: orderBookColor,
+                borderWidth: 1,
+                label: { content: `Стакан: ${avgOrderBookPrice.toFixed(4)}`, enabled: true, position: 'right', color: '#ffffff' }
+            }]);
             const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
             const offsetTime = lastCandleTime + 900000;
             const lastPriceData = lastPrice && lastPriceTime ? [{ x: displayCandles[0].x, y: lastPrice }, { x: new Date(lastCandleTime), y: lastPrice }] : [];
