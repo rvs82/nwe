@@ -64,8 +64,8 @@
         const h = 8;
         let mult = 2.89;
         let mult2 = 1.7;
-        const maxCandles = 107; // Отображаем на графике
-        const maxCalcCandles = 500; // Для расчетов
+        const maxCandles = 107;
+        const maxCalcCandles = 500;
         const tradeSize = 100;
         const commissionRate = 0.0004;
         let timeframe = '15m';
@@ -118,7 +118,7 @@
                 },
                 layout: { padding: { right: 0 } },
                 backgroundColor: '#000000',
-                animation: { duration: 100 } // Короткая анимация
+                animation: { duration: 100 }
             }
         });
 
@@ -352,249 +352,262 @@
             }
         }
 
-        class MarketAI {
-            constructor() {
-                this.model = this.createModel();
-                this.isTrained = false;
-                this.orderBook = { bids: [], asks: [] };
-                this.bestEntry = null;
-                this.bestExit = null;
+        // Ожидание загрузки TensorFlow.js перед созданием MarketAI
+        let aiTrader, aiAnalyst;
+        function initAI() {
+            if (typeof tf === 'undefined') {
+                setTimeout(initAI, 100); // Проверяем каждые 100 мс
+                return;
             }
+            class MarketAI {
+                constructor() {
+                    this.model = this.createModel();
+                    this.isTrained = false;
+                    this.orderBook = { bids: [], asks: [] };
+                    this.bestEntry = null;
+                    this.bestExit = null;
+                }
 
-            createModel() {
-                const model = tf.sequential();
-                model.add(tf.layers.lstm({ units: 50, inputShape: [20, 5], returnSequences: true }));
-                model.add(tf.layers.lstm({ units: 50 }));
-                model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
-                model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
-                return model;
-            }
+                createModel() {
+                    const model = tf.sequential();
+                    model.add(tf.layers.lstm({ units: 50, inputShape: [20, 5], returnSequences: true }));
+                    model.add(tf.layers.lstm({ units: 50 }));
+                    model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
+                    model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
+                    return model;
+                }
 
-            async trainModel() {
-                if (closePrices[timeframe].length < 40 || tradeHistory[timeframe].length < 10) return;
+                async trainModel() {
+                    if (closePrices[timeframe].length < 40 || tradeHistory[timeframe].length < 10) return;
 
-                const lookback = 20;
-                const xs = [];
-                const ys = [];
-                const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
-                const { nwe: nweNarrow } = calculateNWE(closePrices[timeframe], mult2);
-                const ema100 = calculateEMA(closePrices[timeframe], 100);
-                const rsi = calculateRSI(closePrices[timeframe]);
+                    const lookback = 20;
+                    const xs = [];
+                    const ys = [];
+                    const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
+                    const { nwe: nweNarrow } = calculateNWE(closePrices[timeframe], mult2);
+                    const ema100 = calculateEMA(closePrices[timeframe], 100);
+                    const rsi = calculateRSI(closePrices[timeframe]);
 
-                for (let i = lookback; i < closePrices[timeframe].length - 1; i++) {
+                    for (let i = lookback; i < closePrices[timeframe].length - 1; i++) {
+                        const input = [];
+                        for (let j = i - lookback; j < i; j++) {
+                            input.push([
+                                closePrices[timeframe][j],
+                                nweWide[j] - closePrices[timeframe][j],
+                                ema100[j] - closePrices[timeframe][j],
+                                volumes[timeframe][j] || 0,
+                                rsi[j - 14] || 50
+                            ]);
+                        }
+                        const trade = tradeHistory[timeframe].find(t => Math.abs(new Date(t.openTime) - new Date(candles[timeframe][i].x)) < 15*60*1000);
+                        const profit = trade ? trade.profit : 0;
+                        xs.push(input);
+                        ys.push(profit > 0 && trade && trade.type === 'long' ? [1, 0] : [0, 1]);
+                    }
+
+                    if (xs.length < 5) return;
+
+                    const xsTensor = tf.tensor3d(xs);
+                    const ysTensor = tf.tensor2d(ys);
+
+                    await this.model.fit(xsTensor, ysTensor, {
+                        epochs: 200,
+                        batchSize: 32,
+                        callbacks: {
+                            onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`)
+                        }
+                    });
+
+                    this.isTrained = true;
+                    tf.dispose([xsTensor, ysTensor]);
+                }
+
+                async predictOptimalPoints() {
+                    if (!this.isTrained || closePrices[timeframe].length < 20) return null;
+
+                    const lookback = 20;
+                    const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
+                    const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices[timeframe], mult2);
+                    const ema100 = calculateEMA(closePrices[timeframe], 100);
+                    const ema200 = calculateEMA(closePrices[timeframe], 200);
+                    const rsi = calculateRSI(closePrices[timeframe]);
                     const input = [];
-                    for (let j = i - lookback; j < i; j++) {
+                    for (let i = closePrices[timeframe].length - lookback; i < closePrices[timeframe].length; i++) {
                         input.push([
-                            closePrices[timeframe][j],
-                            nweWide[j] - closePrices[timeframe][j],
-                            ema100[j] - closePrices[timeframe][j],
-                            volumes[timeframe][j] || 0,
-                            rsi[j - 14] || 50
+                            closePrices[timeframe][i],
+                            nweWide[i] - closePrices[timeframe][i],
+                            ema100[i] - closePrices[timeframe][i],
+                            volumes[timeframe][i] || 0,
+                            rsi[i - 14] || 50
                         ]);
                     }
-                    const trade = tradeHistory[timeframe].find(t => Math.abs(new Date(t.openTime) - new Date(candles[timeframe][i].x)) < 15*60*1000);
-                    const profit = trade ? trade.profit : 0;
-                    xs.push(input);
-                    ys.push(profit > 0 && trade && trade.type === 'long' ? [1, 0] : [0, 1]);
-                }
 
-                if (xs.length < 5) return;
+                    const inputTensor = tf.tensor3d([input]);
+                    const prediction = this.model.predict(inputTensor);
+                    const result = await prediction.data();
+                    tf.dispose([inputTensor, prediction]);
 
-                const xsTensor = tf.tensor3d(xs);
-                const ysTensor = tf.tensor2d(ys);
+                    const longProb = result[0];
+                    const shortProb = result[1];
+                    const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
+                    const middle = nweNarrow[nweNarrow.length - 1];
+                    const upperNarrow = middle + saeNarrow;
+                    const lowerNarrow = middle - saeNarrow;
+                    const upperWide = middle + calculateNWE(closePrices[timeframe], mult).sae;
+                    const lowerWide = middle - calculateNWE(closePrices[timeframe], mult).sae;
+                    const ema100Last = ema100[ema100.length - 1];
+                    const ema200Last = ema200[ema200.length - 1];
+                    const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
+                    const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                    const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
 
-                await this.model.fit(xsTensor, ysTensor, {
-                    epochs: 200,
-                    batchSize: 32,
-                    callbacks: {
-                        onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`)
+                    let entry = null, exit = null;
+                    if (longProb > shortProb && ema100Last > ema200Last && lastPrice < middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
+                        entry = { type: 'long', price: lowerWide * 0.995, time: new Date() };
+                        exit = { type: 'long', price: upperNarrow * 1.005, time: new Date() };
+                    } else if (shortProb > longProb && ema100Last < ema200Last && lastPrice > middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
+                        entry = { type: 'short', price: upperWide * 1.005, time: new Date() };
+                        exit = { type: 'short', price: lowerNarrow * 0.995, time: new Date() };
                     }
-                });
 
-                this.isTrained = true;
-                tf.dispose([xsTensor, ysTensor]);
-            }
-
-            async predictOptimalPoints() {
-                if (!this.isTrained || closePrices[timeframe].length < 20) return null;
-
-                const lookback = 20;
-                const { nwe: nweWide } = calculateNWE(closePrices[timeframe], mult);
-                const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices[timeframe], mult2);
-                const ema100 = calculateEMA(closePrices[timeframe], 100);
-                const ema200 = calculateEMA(closePrices[timeframe], 200);
-                const rsi = calculateRSI(closePrices[timeframe]);
-                const input = [];
-                for (let i = closePrices[timeframe].length - lookback; i < closePrices[timeframe].length; i++) {
-                    input.push([
-                        closePrices[timeframe][i],
-                        nweWide[i] - closePrices[timeframe][i],
-                        ema100[i] - closePrices[timeframe][i],
-                        volumes[timeframe][i] || 0,
-                        rsi[i - 14] || 50
-                    ]);
+                    if (entry && exit) {
+                        this.bestEntry = entry;
+                        this.bestExit = exit;
+                        return { entry, exit };
+                    }
+                    return null;
                 }
 
-                const inputTensor = tf.tensor3d([input]);
-                const prediction = this.model.predict(inputTensor);
-                const result = await prediction.data();
-                tf.dispose([inputTensor, prediction]);
+                async analyzeMarket() {
+                    const analysis = [];
+                    const displayCandles = candles[timeframe].slice(-maxCandles);
+                    if (displayCandles.length === 0) return "Данные еще не загружены, анализ невозможен.";
 
-                const longProb = result[0];
-                const shortProb = result[1];
-                const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
-                const middle = nweNarrow[nweNarrow.length - 1];
-                const upperNarrow = middle + saeNarrow;
-                const lowerNarrow = middle - saeNarrow;
-                const upperWide = middle + calculateNWE(closePrices[timeframe], mult).sae;
-                const lowerWide = middle - calculateNWE(closePrices[timeframe], mult).sae;
-                const ema100Last = ema100[ema100.length - 1];
-                const ema200Last = ema200[ema200.length - 1];
-                const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
-                const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                    const now = Date.now();
+                    if (now - lastNWEUpdate > 5000 || !cachedNWE) {
+                        cachedNWE = calculateNWE(closePrices[timeframe], mult);
+                        cachedNWE2 = calculateNWE(closePrices[timeframe], mult2);
+                        lastNWEUpdate = now;
+                    }
+                    if (now - lastEMAUpdate > 60000 || !cachedEMA100) {
+                        cachedEMA100 = calculateEMA(closePrices[timeframe], 100);
+                        cachedEMA200 = calculateEMA(closePrices[timeframe], 200);
+                        cachedFib = calculateFibonacciLevels(closePrices[timeframe]);
+                        lastEMAUpdate = now;
+                    }
+                    cachedRSI = calculateRSI(closePrices[timeframe]);
 
-                let entry = null, exit = null;
-                if (longProb > shortProb && ema100Last > ema200Last && lastPrice < middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
-                    entry = { type: 'long', price: lowerWide * 0.995, time: new Date() };
-                    exit = { type: 'long', price: upperNarrow * 1.005, time: new Date() };
-                } else if (shortProb > longProb && ema100Last < ema200Last && lastPrice > middle && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
-                    entry = { type: 'short', price: upperWide * 1.005, time: new Date() };
-                    exit = { type: 'short', price: lowerNarrow * 0.995, time: new Date() };
-                }
+                    const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
+                    const middle = cachedNWE.nwe[cachedNWE.nwe.length - 1];
+                    const upperWide = middle + cachedNWE.sae;
+                    const lowerWide = middle - cachedNWE.sae;
+                    const upperNarrow = middle + cachedNWE2.sae;
+                    const lowerNarrow = middle - cachedNWE2.sae;
+                    const ema100Last = cachedEMA100[cachedEMA100.length - 1];
+                    const ema200Last = cachedEMA200[cachedEMA200.length - 1];
+                    const rsiLast = cachedRSI[cachedRSI.length - 1];
+                    const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                    const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                    const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
 
-                if (entry && exit) {
-                    this.bestEntry = entry;
-                    this.bestExit = exit;
-                    return { entry, exit };
-                }
-                return null;
-            }
-
-            async analyzeMarket() {
-                const analysis = [];
-                const displayCandles = candles[timeframe].slice(-maxCandles);
-                if (displayCandles.length === 0) return "Данные еще не загружены, анализ невозможен.";
-
-                const now = Date.now();
-                if (now - lastNWEUpdate > 5000 || !cachedNWE) {
-                    cachedNWE = calculateNWE(closePrices[timeframe], mult);
-                    cachedNWE2 = calculateNWE(closePrices[timeframe], mult2);
-                    lastNWEUpdate = now;
-                }
-                if (now - lastEMAUpdate > 60000 || !cachedEMA100) {
-                    cachedEMA100 = calculateEMA(closePrices[timeframe], 100);
-                    cachedEMA200 = calculateEMA(closePrices[timeframe], 200);
-                    cachedFib = calculateFibonacciLevels(closePrices[timeframe]);
-                    lastEMAUpdate = now;
-                }
-                cachedRSI = calculateRSI(closePrices[timeframe]);
-
-                const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
-                const middle = cachedNWE.nwe[cachedNWE.nwe.length - 1];
-                const upperWide = middle + cachedNWE.sae;
-                const lowerWide = middle - cachedNWE.sae;
-                const upperNarrow = middle + cachedNWE2.sae;
-                const lowerNarrow = middle - cachedNWE2.sae;
-                const ema100Last = cachedEMA100[cachedEMA100.length - 1];
-                const ema200Last = cachedEMA200[cachedEMA200.length - 1];
-                const rsiLast = cachedRSI[cachedRSI.length - 1];
-                const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                const avgVolume = volumes[timeframe].slice(-10).reduce((a, b) => a + b, 0) / 10;
-
-                analysis.push(`Цена около ${lastPrice.toFixed(3)}. Каналы: широкий ${lowerWide.toFixed(3)}-${upperWide.toFixed(3)}, узкий ${lowerNarrow.toFixed(3)}-${upperNarrow.toFixed(3)}.`);
-                
-                if (ema100Last > ema200Last) {
-                    analysis.push("Тренд восходящий, лонги усилены.");
-                } else {
-                    analysis.push("Тренд нисходящий, шорты усилены.");
-                }
-
-                const emaDistance = Math.abs(lastPrice - ema100Last) / ema100Last;
-                if (emaDistance < 0.005) {
-                    if (lastPrice > ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
-                        analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — поддержка, пробитие вверх вероятно.`);
-                    } else if (lastPrice < ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
-                        analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — сопротивление, пробитие вниз вероятно.`);
+                    analysis.push(`Цена около ${lastPrice.toFixed(3)}. Каналы: широкий ${lowerWide.toFixed(3)}-${upperWide.toFixed(3)}, узкий ${lowerNarrow.toFixed(3)}-${upperNarrow.toFixed(3)}.`);
+                    
+                    if (ema100Last > ema200Last) {
+                        analysis.push("Тренд восходящий, лонги усилены.");
                     } else {
-                        analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — ${lastPrice > ema100Last ? 'поддержка' : 'сопротивление'}, цена тестирует уровень.`);
+                        analysis.push("Тренд нисходящий, шорты усилены.");
                     }
+
+                    const emaDistance = Math.abs(lastPrice - ema100Last) / ema100Last;
+                    if (emaDistance < 0.005) {
+                        if (lastPrice > ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && bidDepth > askDepth) {
+                            analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — поддержка, пробитие вверх вероятно.`);
+                        } else if (lastPrice < ema100Last && volumes[timeframe][volumes[timeframe].length - 1] > avgVolume && askDepth > bidDepth) {
+                            analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — сопротивление, пробитие вниз вероятно.`);
+                        } else {
+                            analysis.push(`EMA 100 на ${ema100Last.toFixed(3)} — ${lastPrice > ema100Last ? 'поддержка' : 'сопротивление'}, цена тестирует уровень.`);
+                        }
+                    }
+
+                    analysis.push(`Стакан: ${bidDepth > askDepth ? 'больше покупок' : 'больше продаж'}.`);
+
+                    if (fearGreedIndex) {
+                        analysis.push(`Индекс страха и жадности: ${fearGreedIndex.value}, настроения ${fearGreedIndex.value < 30 ? 'напуганы' : fearGreedIndex.value > 70 ? 'жадные' : 'нейтральны'}.`);
+                    }
+
+                    const signal = await this.predictOptimalPoints();
+                    if (signal) {
+                        const directionColor = signal.entry.type === 'long' ? '#00ff00' : '#ff0000';
+                        analysis.push(`Рекомендую <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> вход на ${signal.entry.price.toFixed(3)} и выход на ${signal.exit.price.toFixed(3)} для большей прибыли.`);
+                        document.getElementById('tradeAlert').style.display = 'block';
+                        document.getElementById('tradeAlert').innerHTML = `Рекомендация ИИ: <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> | Вход: ${signal.entry.price.toFixed(3)} | Выход: ${signal.exit.price.toFixed(3)}`;
+                        if (document.getElementById('muteSound').checked) alertSound.play();
+                    } else {
+                        analysis.push("Сейчас нет улучшенных точек для вашей системы.");
+                        document.getElementById('tradeAlert').style.display = 'none';
+                    }
+
+                    return analysis.join('<br>');
                 }
 
-                analysis.push(`Стакан: ${bidDepth > askDepth ? 'больше покупок' : 'больше продаж'}.`);
+                provideRecommendations() {
+                    const recommendations = [];
+                    const fibLevels = cachedFib || calculateFibonacciLevels(closePrices[timeframe]);
+                    const closestFib = Object.entries(fibLevels).reduce((prev, curr) => 
+                        Math.abs(lastPrice - curr[1]) < Math.abs(lastPrice - prev[1]) ? curr : prev
+                    );
+                    recommendations.push(`Ближайший уровень Фибоначчи (${closestFib[0]}%) на ${closestFib[1].toFixed(3)} может быть целью или поддержкой.`);
 
-                if (fearGreedIndex) {
-                    analysis.push(`Индекс страха и жадности: ${fearGreedIndex.value}, настроения ${fearGreedIndex.value < 30 ? 'напуганы' : fearGreedIndex.value > 70 ? 'жадные' : 'нейтральны'}.`);
+                    const lossTrades = tradeHistory[timeframe].filter(t => t.profit <= 0);
+                    if (lossTrades.length > 0) {
+                        recommendations.push("Для большей прибыли сдвиньте вход на 0.5% от канала и выход на 2% от средней линии.");
+                    }
+
+                    return recommendations.join('<br>');
                 }
 
-                const signal = await this.predictOptimalPoints();
-                if (signal) {
-                    const directionColor = signal.entry.type === 'long' ? '#00ff00' : '#ff0000';
-                    analysis.push(`Рекомендую <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> вход на ${signal.entry.price.toFixed(3)} и выход на ${signal.exit.price.toFixed(3)} для большей прибыли.`);
-                    document.getElementById('tradeAlert').style.display = 'block';
-                    document.getElementById('tradeAlert').innerHTML = `Рекомендация ИИ: <span style="color: ${directionColor}">${signal.entry.type.toUpperCase()}</span> | Вход: ${signal.entry.price.toFixed(3)} | Выход: ${signal.exit.price.toFixed(3)}`;
-                    if (document.getElementById('muteSound').checked) alertSound.play();
-                } else {
-                    analysis.push("Сейчас нет улучшенных точек для вашей системы.");
-                    document.getElementById('tradeAlert').style.display = 'none';
+                async trainAndUpdate() {
+                    const now = Date.now();
+                    if (now - lastEMAUpdate > 60000 || activeTrade === null) { // Обучение раз в минуту или при закрытии сделки
+                        await this.trainModel();
+                    }
+                    const signal = await this.predictOptimalPoints();
+                    if (signal) {
+                        this.bestEntry = signal.entry;
+                        this.bestExit = signal.exit;
+                        tradeAnnotations.push({
+                            type: 'point',
+                            xValue: signal.entry.time,
+                            yValue: signal.entry.price,
+                            backgroundColor: signal.entry.type === 'long' ? '#00ff00' : '#ff0000',
+                            borderColor: '#ffffff',
+                            radius: 6,
+                            label: { content: 'Лучший вход (ИИ)', enabled: true, position: 'top' }
+                        });
+                        tradeAnnotations.push({
+                            type: 'point',
+                            xValue: signal.exit.time,
+                            yValue: signal.exit.price,
+                            backgroundColor: '#00c108',
+                            borderColor: '#ffffff',
+                            radius: 6,
+                            label: { content: 'Лучший выход (ИИ)', enabled: true, position: 'top' }
+                        });
+                    }
+                    document.getElementById('aiAnalysis').innerHTML = await this.analyzeMarket();
+                    document.getElementById('aiRecommendations').innerHTML = this.provideRecommendations();
+                    updateChart();
                 }
-
-                return analysis.join('<br>');
             }
 
-            provideRecommendations() {
-                const recommendations = [];
-                const fibLevels = cachedFib || calculateFibonacciLevels(closePrices[timeframe]);
-                const closestFib = Object.entries(fibLevels).reduce((prev, curr) => 
-                    Math.abs(lastPrice - curr[1]) < Math.abs(lastPrice - prev[1]) ? curr : prev
-                );
-                recommendations.push(`Ближайший уровень Фибоначчи (${closestFib[0]}%) на ${closestFib[1].toFixed(3)} может быть целью или поддержкой.`);
-
-                const lossTrades = tradeHistory[timeframe].filter(t => t.profit <= 0);
-                if (lossTrades.length > 0) {
-                    recommendations.push("Для большей прибыли сдвиньте вход на 0.5% от канала и выход на 2% от средней линии.");
-                }
-
-                return recommendations.join('<br>');
-            }
-
-            async trainAndUpdate() {
-                const now = Date.now();
-                if (now - lastEMAUpdate > 60000 || activeTrade === null) { // Обучение раз в минуту или при закрытии сделки
-                    await this.trainModel();
-                }
-                const signal = await this.predictOptimalPoints();
-                if (signal) {
-                    this.bestEntry = signal.entry;
-                    this.bestExit = signal.exit;
-                    tradeAnnotations.push({
-                        type: 'point',
-                        xValue: signal.entry.time,
-                        yValue: signal.entry.price,
-                        backgroundColor: signal.entry.type === 'long' ? '#00ff00' : '#ff0000',
-                        borderColor: '#ffffff',
-                        radius: 6,
-                        label: { content: 'Лучший вход (ИИ)', enabled: true, position: 'top' }
-                    });
-                    tradeAnnotations.push({
-                        type: 'point',
-                        xValue: signal.exit.time,
-                        yValue: signal.exit.price,
-                        backgroundColor: '#00c108',
-                        borderColor: '#ffffff',
-                        radius: 6,
-                        label: { content: 'Лучший выход (ИИ)', enabled: true, position: 'top' }
-                    });
-                }
-                document.getElementById('aiAnalysis').innerHTML = await this.analyzeMarket();
-                document.getElementById('aiRecommendations').innerHTML = this.provideRecommendations();
-                updateChart();
-            }
+            aiTrader = new TradingAI();
+            aiAnalyst = new MarketAI();
+            fetchInitialCandles();
+            fetchFearGreedIndex();
         }
 
-        const aiTrader = new TradingAI();
-        const aiAnalyst = new MarketAI();
+        // Запускаем инициализацию после загрузки TensorFlow.js
+        initAI();
 
         function updateStats() {
             const totalProfit = tradeHistory[timeframe].reduce((sum, trade) => sum + trade.profit, 0);
@@ -737,7 +750,7 @@
                 chartBuffer.length = 0;
                 updateChart();
             }
-            aiAnalyst.trainAndUpdate(); // Обновление ИИ раз в секунду для RSI и стакана
+            aiAnalyst.trainAndUpdate();
         }, 1000);
 
         function updateChart() {
@@ -822,9 +835,6 @@
             chart.data.datasets[9].data = lastPriceData;
             chart.update();
         }
-
-        fetchInitialCandles();
-        fetchFearGreedIndex();
     </script>
 </body>
 </html>
