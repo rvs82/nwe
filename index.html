@@ -133,6 +133,7 @@
         }
 
         function calculateEMA(prices, period) {
+            if (prices.length < 1) return [];
             const k = 2 / (period + 1);
             const ema = [];
             let sum = 0;
@@ -385,6 +386,9 @@
                     candles[timeframe].splice(0, candles[timeframe].length - maxCalcCandles);
                     closePrices[timeframe].splice(0, closePrices[timeframe].length - maxCalcCandles);
                 }
+                // Сбрасываем кэш EMA при загрузке новых данных
+                cachedEMA100 = null;
+                cachedEMA200 = null;
                 updateChart();
             } catch (error) {
                 console.error("Error fetching initial candles:", error);
@@ -407,6 +411,9 @@
                     closePrices[timeframe].shift();
                 }
                 chartBuffer.length = 0;
+                // Сбрасываем кэш EMA при добавлении новых данных
+                cachedEMA100 = null;
+                cachedEMA200 = null;
                 updateChart();
             }
         }, 1000);
