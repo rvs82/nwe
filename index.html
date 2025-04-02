@@ -10,50 +10,106 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script async src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <style>
-        body { background-color: #000000; color: white; font-family: Arial, sans-serif; margin: 0; padding: 5px 20px 20px; font-weight: 400; line-height: 1.5; }
-        canvas { max-width: 100%; }
-        #tradeAlert { display: none; background-color: #333; border: 2px solid #00ff00; padding: 10px; text-align: center; font-size: 16px; margin-bottom: 10px; }
-        #infoBar { text-align: center; font-size: 16px; margin: 10px 0; }
-        #tradeInfo { font-size: 14px; margin-top: 5px; }
-        #aiSection, #tradeLog { max-height: 150px; overflow-y: auto; font-size: 14px; margin-top: 10px; padding: 10px; background-color: #1a1a1a; border: 1px solid #333; }
-        #aiSection { max-height: 300px; }
-        #aiLog { max-height: 100px; overflow-y: auto; font-size: 12px; padding: 5px; background-color: #222; }
-        h2 { font-size: 18px; margin: 10px 0 5px; }
-        #aiRecommendations { color: #cccccc; }
+        body { 
+            background-color: #000000; 
+            color: white; 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 5px; 
+            font-weight: 400; 
+            line-height: 1.5; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        #chartContainer { 
+            flex: 1; 
+            max-height: 50vh; 
+            overflow: hidden; 
+            padding: 5px; 
+        }
+        canvas { 
+            width: 100% !important; 
+            height: 100% !important; 
+        }
+        #aiSection { 
+            flex: 1; 
+            max-height: 50vh; 
+            overflow-y: auto; 
+            padding: 10px; 
+            background-color: #1a1a1a; 
+            border: 1px solid #333; 
+            margin: 5px 0; 
+        }
+        #tradeAlert { 
+            display: none; 
+            background-color: #333; 
+            border: 2px solid #00ff00; 
+            padding: 10px; 
+            text-align: center; 
+            font-size: 16px; 
+            margin-bottom: 10px; 
+        }
+        #infoBar { 
+            text-align: center; 
+            font-size: 16px; 
+            margin: 5px 0; 
+        }
+        #tradeInfo { 
+            font-size: 14px; 
+            margin-top: 5px; 
+        }
+        #aiLog, #tradeLog { 
+            max-height: 150px; 
+            overflow-y: auto; 
+            font-size: 12px; 
+            padding: 10px; 
+            background-color: #222; 
+            border: 1px solid #333; 
+            margin: 5px 0; 
+        }
+        h2 { 
+            font-size: 18px; 
+            margin: 10px 0 5px; 
+        }
+        #aiRecommendations { 
+            color: #cccccc; 
+        }
     </style>
 </head>
 <body>
-    <div id="tradeAlert"></div>
-    <canvas id="priceChart"></canvas>
-    <div id="infoBar">
-        <span id="currentPrice">Текущая цена: N/A</span> | 
-        <span id="stats">Открыто: 0 | Сделок: 0 | Прибыль: 0 USDT</span> | 
-        <label><input type="checkbox" id="muteSound" checked> Звук</label> | 
-        <select id="timeframe">
-            <option value="15m" selected>15m</option>
-            <option value="1h">1h</option>
-            <option value="4h">4h</option>
-        </select>
-        <div id="tradeInfo"></div>
+    <div id="chartContainer">
+        <div id="tradeAlert"></div>
+        <canvas id="priceChart"></canvas>
+        <div id="infoBar">
+            <span id="currentPrice">Текущая цена: N/A</span> | 
+            <span id="stats">Открыто: 0 | Сделок: 0 | Прибыль: 0 USDT</span> | 
+            <label><input type="checkbox" id="muteSound" checked> Звук</label> | 
+            <select id="timeframe">
+                <option value="15m" selected>15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+            </select>
+            <div id="tradeInfo"></div>
+        </div>
     </div>
     <div id="aiSection">
         <h2>ИИ</h2><div id="aiAnalysis"></div>
         <h2>Рекомендации</h2><div id="aiRecommendations"></div>
-        <h2>Лог ИИ</h2><div id="aiLog"></div>
     </div>
+    <div id="aiLog"><h2>Лог ИИ</h2></div>
     <div id="tradeLog"><h2>Сделки</h2></div>
 
     <script>
         const h = 8;
         let mult = 2.89;
         let mult2 = 1.7;
-        const maxCandles = 107;
         const maxCalcCandles = 500;
         const tradeSize = 100;
         const commissionRate = 0.0004;
         let timeframe = '15m';
-        let bookThreshold = 15; // Начальный порог для стакана
-        let marketThreshold = 20; // Начальный порог для рынка
+        let bookThreshold = 15;
+        let marketThreshold = 20;
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
@@ -79,6 +135,7 @@
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: { legend: { display: false }, annotation: { annotations: [] } },
                 scales: {
                     x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
@@ -89,6 +146,8 @@
                 animation: { duration: 100 }
             }
         });
+
+        const maxCandles = Math.floor(document.getElementById('chartContainer').offsetWidth / 30); // Подстройка под ширину контейнера
 
         function gauss(x, h) {
             return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
@@ -184,8 +243,8 @@
         let cachedNWE = null, cachedNWE2 = null, cachedEMA100 = null, cachedEMA200 = null, cachedRSI = null, cachedFib = null;
         let lastNWEUpdate = 0, lastEMAUpdate = 0;
         const chartBuffer = [];
-        const tradeBuffer = []; // Буфер для рыночных сделок
-        const thresholdHistory = []; // История для корректировки порогов
+        const tradeBuffer = [];
+        const thresholdHistory = [];
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
@@ -332,7 +391,7 @@
             updateAILog(message) {
                 const log = document.getElementById('aiLog');
                 const timestamp = new Date().toLocaleTimeString();
-                log.innerHTML = `<div>[${timestamp}] ${message}</div>` + log.innerHTML;
+                log.innerHTML = `<h2>Лог ИИ</h2><div>[${timestamp}] ${message}</div>` + log.innerHTML.split('</h2>')[1];
                 log.scrollTop = 0;
             }
 
