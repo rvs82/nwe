@@ -30,6 +30,7 @@
             margin-bottom: 10px; 
         }
         #infoBar { text-align: center; font-size: 16px; margin: 10px 0; }
+        #tradeInfo { font-size: 14px; margin-top: 5px; }
         #aiSection, #tradeLog { 
             max-height: 150px; 
             overflow-y: auto; 
@@ -56,6 +57,7 @@
             <option value="1h">1h</option>
             <option value="4h">4h</option>
         </select>
+        <div id="tradeInfo"></div> <!-- Добавлен элемент для информации о сделке -->
     </div>
     <div id="aiSection"><h2>ИИ</h2><div id="aiAnalysis"></div><h2>Рекомендации</h2><div id="aiRecommendations"></div></div>
     <div id="tradeLog"><h2>Сделки</h2></div>
@@ -341,22 +343,24 @@
             }
 
             updateTradeInfo() {
+                const tradeInfoElement = document.getElementById('tradeInfo');
                 if (activeTrade) {
                     const elapsed = Math.floor((Date.now() - activeTrade.startTime) / 1000);
                     const days = Math.floor(elapsed / (24 * 3600));
                     const hours = Math.floor((elapsed % (24 * 3600)) / 3600);
                     const minutes = Math.floor((elapsed % 3600) / 60);
                     const timeStr = `${days > 0 ? days + 'д ' : ''}${hours}ч ${minutes}м`;
-                    document.getElementById('tradeInfo').textContent = `${activeTrade.type.toUpperCase()} | Вход: ${activeTrade.openPrice.toFixed(4)} | TP: ${activeTrade.takeProfit.toFixed(4)} | Время: ${timeStr}`;
+                    tradeInfoElement.textContent = `${activeTrade.type.toUpperCase()} | Вход: ${activeTrade.openPrice.toFixed(4)} | TP: ${activeTrade.takeProfit.toFixed(4)} | Время: ${timeStr}`;
+                } else {
+                    tradeInfoElement.textContent = '';
                 }
             }
         }
 
-        // Ожидание загрузки TensorFlow.js перед созданием MarketAI
         let aiTrader, aiAnalyst;
         function initAI() {
             if (typeof tf === 'undefined') {
-                setTimeout(initAI, 100); // Проверяем каждые 100 мс
+                setTimeout(initAI, 100);
                 return;
             }
             class MarketAI {
