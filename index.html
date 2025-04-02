@@ -105,7 +105,8 @@
                     { label: 'EMA 100', data: [], borderColor: '#d873f6', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'EMA 200', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] },
-                    { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] }
+                    { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] },
+                    { label: 'Book Diff', data: [], borderColor: '#00ffff', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y2' }
                 ]
             },
             options: {
@@ -113,7 +114,8 @@
                 plugins: { legend: { display: false }, annotation: { annotations: [] } },
                 scales: {
                     x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
-                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); }, padding: 50 } }
+                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); }, padding: 50 } },
+                    y2: { title: { display: true, text: 'Book Diff (%)' }, position: 'left', grid: { display: false }, ticks: { color: '#00ffff' }, min: -100, max: 100 }
                 },
                 layout: { padding: { right: 0 } },
                 backgroundColor: '#000000',
@@ -200,7 +202,7 @@
                 if (diff > 0) gains += diff;
                 else losses -= diff;
             }
-            let avgGain = gins / period;
+            let avgGain = gains / period;
             let avgLoss = losses / period;
             rsi.push(100 - (100 / (1 + (avgGain / avgLoss))));
             for (let i = period + 1; i < prices.length; i++) {
@@ -225,13 +227,14 @@
         let aiEntryPoint = null;
         let aiExitPoint = null;
         let fearGreedIndex = null;
-        let cachedNWE = null, cachedNWE2 = null, cachedEMA100 = null, cachedEMA200 = null, cachedRSI = null, cachedFib = null;
+        let cachedNWE = null, cachedNWE2 = null, cachedEMA100 = null, cachedEMA200 = null, cachedRSI = null;
         let lastNWEUpdate = 0, lastEMAUpdate = 0;
         const chartBuffer = [];
         const tradeBuffer = [];
         const thresholdHistory = [];
         const bookDiffHistory = [];
         const marketDiffHistory = [];
+        const bookDiffChartData = []; // Для графика
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
@@ -574,7 +577,6 @@
                         if (now - lastEMAUpdate > 60000 || !cachedEMA100 || closePrices[timeframe].length !== cachedEMA100.length) {
                             cachedEMA100 = calculateEMA(closePrices[timeframe], 100);
                             cachedEMA200 = calculateEMA(closePrices[timeframe], 200);
-                            cachedFib = calculateFibonacciLevels(closePrices[timeframe]);
                             lastEMAUpdate = now;
                         }
                         cachedRSI = calculateRSI(closePrices[timeframe]);
@@ -763,7 +765,7 @@
             cachedEMA100 = null;
             cachedEMA200 = null;
             cachedRSI = null;
-            cachedFib = null;
+            bookDiffChartData.length = 0; // Сбрасываем данные графика
             fetchInitialCandles();
         });
 
@@ -867,6 +869,21 @@
             const bidVol = aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
             const askVol = aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
             const orderBookColor = bidVol > askVol ? '#00FF00' : '#FF0000';
+            const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
+            bookDiffHistory.push(rawBookDiff);
+            if (bookDiffHistory.length > analysisSmoothingWindow) bookDiffHistory.shift();
+            const smoothedBookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
+
+            const marketData = aiTrader.getMarketData();
+            marketDiffHistory.push(marketData.diff);
+            if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
+            const smoothedMarketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
+
+            // Корректируем bookDiff с учетом marketDiff (среднее взвешенное)
+            const adjustedBookDiff = (smoothedBookDiff * 0.6 + smoothedMarketDiff * 0.4);
+            bookDiffChartData.push({ x: lastPriceTime || new Date(), y: adjustedBookDiff });
+            if (bookDiffChartData.length > maxCandles) bookDiffChartData.shift();
+
             const annotations = displayCandles.map((c, i) => ({
                 type: 'box',
                 xMin: c.x.getTime() - 300000,
@@ -911,6 +928,7 @@
             chart.data.datasets[7].data = ema100Data;
             chart.data.datasets[8].data = ema200Data;
             chart.data.datasets[9].data = lastPriceData;
+            chart.data.datasets[11].data = bookDiffChartData; // Линия стакана на графике
             chart.update();
         }
     </script>
