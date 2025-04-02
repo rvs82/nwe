@@ -50,6 +50,11 @@
                     <option value="3" selected>3</option>
                     <option value="4">4</option>
                     <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
                 </select>
             </label>
             <span id="currentConfirmCount">(Текущий: 3)</span>
@@ -78,7 +83,8 @@
         let confirmCount = localStorage.getItem('confirmCount') ? parseInt(localStorage.getItem('confirmCount')) : 3;
         let longConfirm = 0;
         let shortConfirm = 0;
-        const smoothingWindow = 5; // Размер окна сглаживания
+        const smoothingWindow = 5; // Для сделок
+        const analysisSmoothingWindow = 10; // Для анализа ИИ
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
@@ -194,7 +200,7 @@
                 if (diff > 0) gains += diff;
                 else losses -= diff;
             }
-            let avgGain = gains / period;
+            let avgGain = gins / period;
             let avgLoss = losses / period;
             rsi.push(100 - (100 / (1 + (avgGain / avgLoss))));
             for (let i = period + 1; i < prices.length; i++) {
@@ -206,20 +212,6 @@
                 rsi.push(100 - (100 / (1 + (avgGain / avgLoss))));
             }
             return rsi;
-        }
-
-        function calculateFibonacciLevels(prices) {
-            const high = Math.max(...prices.slice(-50));
-            const low = Math.min(...prices.slice(-50));
-            const diff = high - low;
-            return {
-                '0': low,
-                '23.6': low + diff * 0.236,
-                '38.2': low + diff * 0.382,
-                '50': low + diff * 0.5,
-                '61.8': low + diff * 0.618,
-                '100': high
-            };
         }
 
         const candles = { '15m': [], '1h': [], '4h': [] };
@@ -256,7 +248,6 @@
                     const bookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
 
                     const marketData = this.getMarketData();
-                    const rawMarketDiff = marketData.buyVol > marketData.sellVol ? ((marketData.buyVol - marketData.sellVol) / marketData.sellVol * 100) : -((marketData.sellVol - marketData.buyVol) / marketData.buyVol * 100);
                     marketDiffHistory.push(marketData.diff);
                     if (marketDiffHistory.length > smoothingWindow) marketDiffHistory.shift();
                     const marketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
@@ -604,13 +595,12 @@
                         const askVol = askDepth;
                         const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
                         bookDiffHistory.push(rawBookDiff);
-                        if (bookDiffHistory.length > smoothingWindow) bookDiffHistory.shift();
+                        if (bookDiffHistory.length > analysisSmoothingWindow) bookDiffHistory.shift();
                         const smoothedBookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
 
                         const marketData = aiTrader.getMarketData();
-                        const rawMarketDiff = marketData.buyVol > marketData.sellVol ? ((marketData.buyVol - marketData.sellVol) / marketData.sellVol * 100) : -((marketData.sellVol - marketData.buyVol) / marketData.buyVol * 100);
                         marketDiffHistory.push(marketData.diff);
-                        if (marketDiffHistory.length > smoothingWindow) marketDiffHistory.shift();
+                        if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
                         const smoothedMarketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
 
                         analysis.push(`Цена около ${lastPrice.toFixed(3)}. Каналы: широкий ${lowerWide.toFixed(3)}-${upperWide.toFixed(3)}, узкий ${lowerNarrow.toFixed(3)}-${upperNarrow.toFixed(3)}.`);
@@ -649,14 +639,22 @@
 
                     provideRecommendations() {
                         const recommendations = [];
-                        const fibLevels = cachedFib || calculateFibonacciLevels(closePrices[timeframe]);
-                        const closestFib = Object.entries(fibLevels).reduce((prev, curr) => Math.abs(lastPrice - curr[1]) < Math.abs(lastPrice - prev[1]) ? curr : prev);
-                        recommendations.push(`Ближайший уровень Фибоначчи (${closestFib[0]}%) на ${closestFib[1].toFixed(3)} может быть целью или поддержкой.`);
+                        const ema100Last = cachedEMA100 ? cachedEMA100[cachedEMA100.length - 1] : 0;
+                        const ema200Last = cachedEMA200 ? cachedEMA200[cachedEMA200.length - 1] : 0;
+                        const lastPrice = closePrices[timeframe][closePrices[timeframe].length - 1];
+                        const smoothedBookDiff = bookDiffHistory.length ? Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100) : 0;
+                        const smoothedMarketDiff = marketDiffHistory.length ? Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100) : 0;
+
+                        if (ema100Last > ema200Last && lastPrice < ema100Last && smoothedBookDiff > 20 && smoothedMarketDiff > 20) {
+                            recommendations.push("Рынок разворачивается вверх, возможен рост.");
+                        } else if (ema100Last < ema200Last && lastPrice > ema100Last && smoothedBookDiff < -20 && smoothedMarketDiff < -20) {
+                            recommendations.push("Рынок разворачивается вниз, возможно падение.");
+                        }
                         const lossTrades = tradeHistory[timeframe].filter(t => t.profit <= 0);
                         if (lossTrades.length > 0) {
-                            recommendations.push("Для большей прибыли сдвиньте вход на 0.5% от канала и выход на 2% от средней линии.");
+                            recommendations.push("Увеличьте количество подтверждений для снижения ложных сигналов.");
                         }
-                        return recommendations.join('<br>');
+                        return recommendations.length > 0 ? recommendations.join('<br>') : "Нет активных рекомендаций.";
                     }
 
                     async trainAndUpdate() {
