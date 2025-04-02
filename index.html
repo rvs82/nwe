@@ -216,10 +216,10 @@
 
                         if (emaBetween && emaRisk <= 0.25) {
                             if (aiPrediction && aiPrediction.entry && aiPrediction.entry.type === 'long' && aiPrediction.exit.price > ema100Last) {
-                                takeProfit = upperNarrow; // ИИ считает, что EMA пробьется
+                                takeProfit = upperNarrow;
                                 logEntry.push("ИИ: EMA будет пробита, TP на узкой границе");
                             } else {
-                                takeProfit = ema100Last; // EMA близко, ставим TP на нее
+                                takeProfit = ema100Last;
                                 logEntry.push("TP установлен на EMA 100");
                             }
                         }
@@ -248,10 +248,10 @@
 
                         if (emaBetween && emaRisk <= 0.25) {
                             if (aiPrediction && aiPrediction.entry && aiPrediction.entry.type === 'short' && aiPrediction.exit.price < ema100Last) {
-                                takeProfit = lowerNarrow; // ИИ считает, что EMA пробьется
+                                takeProfit = lowerNarrow;
                                 logEntry.push("ИИ: EMA будет пробита, TP на узкой границе");
                             } else {
-                                takeProfit = ema100Last; // EMA близко, ставим TP на нее
+                                takeProfit = ema100Last;
                                 logEntry.push("TP установлен на EMA 100");
                             }
                         }
@@ -352,7 +352,6 @@
                 const recentTrades = tradeBuffer.filter(t => now - t.time <= 3000);
                 const buyVol = recentTrades.filter(t => t.isBuyer).reduce((sum, t) => sum + parseFloat(t.qty), 0);
                 const sellVol = recentTrades.filter(t => !t.isBuyer).reduce((sum, t) => sum + parseFloat(t.qty), 0);
-                // Исправление NaN/Infinity
                 if (sellVol === 0 && buyVol > 0) return { buyVol, sellVol, diff: 100 };
                 if (buyVol === 0 && sellVol > 0) return { buyVol, sellVol, diff: -100 };
                 const diff = buyVol > sellVol ? ((buyVol - sellVol) / sellVol * 100) : -((sellVol - buyVol) / buyVol * 100);
@@ -363,6 +362,10 @@
                 const log = document.getElementById('aiLog');
                 const timestamp = new Date().toLocaleTimeString();
                 log.innerHTML = `<div>[${timestamp}] ${message}</div>` + log.innerHTML;
+                const entries = log.getElementsByTagName('div');
+                while (entries.length > 50) {
+                    entries[entries.length - 1].remove();
+                }
                 log.scrollTop = 0;
             }
 
@@ -402,9 +405,7 @@
 
                 createModel() {
                     const model = tf.sequential();
-                    model.add(tf.layers.lstm({ units: 50, input 
-   
-Shape: [20, 5], returnSequences: true }));
+                    model.add(tf.layers.lstm({ units: 50, inputShape: [20, 5], returnSequences: true }));
                     model.add(tf.layers.lstm({ units: 50 }));
                     model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
                     model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy' });
