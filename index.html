@@ -208,7 +208,7 @@
         let aiEntryPoint = null;
         let aiExitPoint = null;
         let fearGreedIndex = null;
-        let cachedNWE = null, cachedEMA100 = null, cachedEMA200 = null, cachedRSI = null, cachedFib = null;
+        let cachedNWE = null, cachedNWE2 = null, cachedEMA100 = null, cachedEMA200 = null, cachedRSI = null, cachedFib = null;
         let lastNWEUpdate = 0, lastEMAUpdate = 0;
         const chartBuffer = [];
 
@@ -484,7 +484,7 @@
                     if (displayCandles.length === 0) return "Данные еще не загружены, анализ невозможен.";
 
                     const now = Date.now();
-                    if (now - lastNWEUpdate > 5000 || !cachedNWE) {
+                    if (now - lastNWEUpdate > 5000 || !cachedNWE || !cachedNWE2) {
                         cachedNWE = calculateNWE(closePrices[timeframe], mult);
                         cachedNWE2 = calculateNWE(closePrices[timeframe], mult2);
                         lastNWEUpdate = now;
@@ -568,7 +568,7 @@
 
                 async trainAndUpdate() {
                     const now = Date.now();
-                    if (now - lastEMAUpdate > 60000 || activeTrade === null) { // Обучение раз в минуту или при закрытии сделки
+                    if (now - lastEMAUpdate > 60000 || activeTrade === null) {
                         await this.trainModel();
                     }
                     const signal = await this.predictOptimalPoints();
@@ -606,7 +606,6 @@
             fetchFearGreedIndex();
         }
 
-        // Запускаем инициализацию после загрузки TensorFlow.js
         initAI();
 
         function updateStats() {
@@ -683,6 +682,7 @@
             closePrices[timeframe].length = 0;
             volumes[timeframe].length = 0;
             cachedNWE = null;
+            cachedNWE2 = null;
             cachedEMA100 = null;
             cachedEMA200 = null;
             cachedRSI = null;
@@ -776,7 +776,7 @@
             });
 
             const { nwe, sae } = cachedNWE || calculateNWE(closePrices[timeframe], mult);
-            const { sae: sae2 } = cachedNWE2 || calculateNWE(closePrices[timeframe], mult2);
+            const { nwe: nwe2, sae: sae2 } = cachedNWE2 || calculateNWE(closePrices[timeframe], mult2);
             const displayNwe = nwe.slice(-maxCandles);
             const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
             const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
