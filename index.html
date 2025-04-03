@@ -20,10 +20,10 @@
         #aiLog { max-height: 100px; overflow-y: auto; font-size: 12px; padding: 5px; background-color: #222; }
         h2 { font-size: 18px; margin: 10px 0 5px; }
         #aiRecommendations { color: #cccccc; }
-        input[type="number"] { width: 50px; margin: 0 5px; background-color: #222; color: white; border: 1px solid #333; }
         select { margin: 0 5px; background-color: #222; color: white; border: 1px solid #333; }
         .threshold-note { font-size: 12px; color: #999; }
         #thresholdControls { margin-top: 5px; }
+        #aiCorrection { margin-top: 5px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -39,12 +39,31 @@
             <option value="4h">4h</option>
         </select>
         <div id="thresholdControls">
-            <label>Стакан: <input type="number" id="bookThresholdInput" min="0" step="1" value="5">%</label> 
+            <label>Стакан: 
+                <select id="bookThresholdInput">
+                    <option value="auto">Авто</option>
+                    <option value="5" selected>5%</option>
+                    <option value="10">10%</option>
+                    <option value="15">15%</option>
+                    <option value="20">20%</option>
+                    <option value="25">25%</option>
+                </select>
+            </label> 
             <span id="currentBookThreshold">(Текущий: 5%)</span> |
-            <label>Рынок: <input type="number" id="marketThresholdInput" min="0" step="1" value="20">%</label> 
+            <label>Рынок: 
+                <select id="marketThresholdInput">
+                    <option value="auto">Авто</option>
+                    <option value="20" selected>20%</option>
+                    <option value="25">25%</option>
+                    <option value="30">30%</option>
+                    <option value="35">35%</option>
+                    <option value="40">40%</option>
+                </select>
+            </label> 
             <span id="currentMarketThreshold">(Текущий: 20%)</span> |
             <label>Подтверждений: 
                 <select id="confirmCountInput">
+                    <option value="auto">Авто</option>
                     <option value="1">1</option>
                     <option value="2">2</option>
                     <option value="3" selected>3</option>
@@ -60,6 +79,7 @@
             <span id="currentConfirmCount">(Текущий: 3)</span>
         </div>
         <div class="threshold-note">Изменения применяются автоматически</div>
+        <div id="aiCorrection">Корректировка ИИ: Стакан: 5%, Рынок: 20%, Подтверждений: 3</div>
         <div id="tradeInfo"></div>
     </div>
     <div id="aiSection">
@@ -85,6 +105,13 @@
         let shortConfirm = 0;
         const smoothingWindow = 5; // Для сделок
         const analysisSmoothingWindow = 10; // Для анализа ИИ и квадратика
+        let aiBookThreshold = bookThreshold;
+        let aiMarketThreshold = marketThreshold;
+        let aiConfirmCount = confirmCount;
+        let isAiBookAuto = false;
+        let isAiMarketAuto = false;
+        let isAiConfirmAuto = false;
+        let previousPrice = null;
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
@@ -122,29 +149,47 @@
         });
 
         // Инициализация значений порогов и подтверждений
-        document.getElementById('bookThresholdInput').value = bookThreshold;
-        document.getElementById('marketThresholdInput').value = marketThreshold;
-        document.getElementById('confirmCountInput').value = confirmCount;
+        document.getElementById('bookThresholdInput').value = '5';
+        document.getElementById('marketThresholdInput').value = '20';
+        document.getElementById('confirmCountInput').value = '3';
         document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
         document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
         document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
 
         // Обработчики изменения порогов и подтверждений
         document.getElementById('bookThresholdInput').addEventListener('change', (e) => {
-            bookThreshold = parseFloat(e.target.value) || 5;
-            localStorage.setItem('bookThreshold', bookThreshold);
+            if (e.target.value === 'auto') {
+                isAiBookAuto = true;
+                bookThreshold = aiBookThreshold;
+            } else {
+                isAiBookAuto = false;
+                bookThreshold = parseFloat(e.target.value);
+                localStorage.setItem('bookThreshold', bookThreshold);
+            }
             document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
         });
 
         document.getElementById('marketThresholdInput').addEventListener('change', (e) => {
-            marketThreshold = parseFloat(e.target.value) || 20;
-            localStorage.setItem('marketThreshold', marketThreshold);
+            if (e.target.value === 'auto') {
+                isAiMarketAuto = true;
+                marketThreshold = aiMarketThreshold;
+            } else {
+                isAiMarketAuto = false;
+                marketThreshold = parseFloat(e.target.value);
+                localStorage.setItem('marketThreshold', marketThreshold);
+            }
             document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
         });
 
         document.getElementById('confirmCountInput').addEventListener('change', (e) => {
-            confirmCount = parseInt(e.target.value) || 3;
-            localStorage.setItem('confirmCount', confirmCount);
+            if (e.target.value === 'auto') {
+                isAiConfirmAuto = true;
+                confirmCount = aiConfirmCount;
+            } else {
+                isAiConfirmAuto = false;
+                confirmCount = parseInt(e.target.value);
+                localStorage.setItem('confirmCount', confirmCount);
+            }
             document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
         });
 
@@ -232,6 +277,7 @@
         const thresholdHistory = [];
         const bookDiffHistory = [];
         const marketDiffHistory = [];
+        let priceHistory = []; // Для анализа движения цены
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
@@ -242,7 +288,8 @@
                     const ema200Last = ema200[ema200.length - 1];
                     const bidVol = aiAnalyst.orderBook.bids.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
                     const askVol = aiAnalyst.orderBook.asks.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
+                    const totalBookVol = bidVol + askVol;
+                    const rawBookDiff = totalBookVol > 0 ? ((bidVol - askVol) / totalBookVol) * 100 : 0;
                     bookDiffHistory.push(rawBookDiff);
                     if (bookDiffHistory.length > smoothingWindow) bookDiffHistory.shift();
                     const bookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
@@ -339,6 +386,7 @@
                     } else {
                         longConfirm = 0;
                         shortConfirm = 0;
+                        this.updateAILog(`Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%, Цена в канале, ожидание`);
                     }
                 } else if (activeTrade) {
                     this.updateTakeProfit(time, lowerNarrow, upperNarrow);
@@ -424,10 +472,9 @@
                 const recentTrades = tradeBuffer.filter(t => now - t.time <= 3000);
                 const buyVol = recentTrades.filter(t => t.isBuyer).reduce((sum, t) => sum + parseFloat(t.qty), 0);
                 const sellVol = recentTrades.filter(t => !t.isBuyer).reduce((sum, t) => sum + parseFloat(t.qty), 0);
-                if (sellVol === 0 && buyVol > 0) return { buyVol, sellVol, diff: 100 };
-                if (buyVol === 0 && sellVol > 0) return { buyVol, sellVol, diff: -100 };
-                const diff = buyVol > sellVol ? ((buyVol - sellVol) / sellVol * 100) : -((sellVol - buyVol) / buyVol * 100);
-                return { buyVol, sellVol, diff: isFinite(diff) ? diff : 0 };
+                const totalVol = buyVol + sellVol;
+                const diff = totalVol > 0 ? ((buyVol - sellVol) / totalVol) * 100 : 0;
+                return { buyVol, sellVol, diff };
             }
 
             updateAILog(message) {
@@ -442,25 +489,8 @@
             }
 
             adjustThresholds(bookDiff, marketDiff, success) {
-                thresholdHistory.push({ bookDiff, marketDiff, success, priceChange: lastPrice - closePrices[timeframe][closePrices[timeframe].length - 2] || 0 });
+                thresholdHistory.push({ bookDiff, marketDiff, success, priceChange: lastPrice - (closePrices[timeframe][closePrices[timeframe].length - 2] || lastPrice) });
                 if (thresholdHistory.length > 10) thresholdHistory.shift();
-                if (thresholdHistory.length >= 5) {
-                    const avgBookDiff = thresholdHistory.reduce((sum, h) => sum + h.bookDiff, 0) / thresholdHistory.length;
-                    const avgMarketDiff = thresholdHistory.reduce((sum, h) => sum + h.marketDiff, 0) / thresholdHistory.length;
-                    const successRate = thresholdHistory.filter(h => h.success).length / thresholdHistory.length;
-                    const priceCorrelation = thresholdHistory.reduce((sum, h) => sum + (h.priceChange > 0 ? h.bookDiff : -h.bookDiff), 0) / thresholdHistory.length;
-
-                    if (successRate > 0.7 && priceCorrelation > 0 && avgBookDiff < bookThreshold) bookThreshold = Math.max(10, bookThreshold - 1);
-                    else if (successRate < 0.3 && avgBookDiff > bookThreshold) bookThreshold = Math.min(25, bookThreshold + 1);
-                    if (successRate > 0.7 && priceCorrelation > 0 && avgMarketDiff < marketThreshold) marketThreshold = Math.max(15, marketThreshold - 1);
-                    else if (successRate < 0.3 && avgMarketDiff > marketThreshold) marketThreshold = Math.min(35, marketThreshold + 1);
-
-                    document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
-                    document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
-                    localStorage.setItem('bookThreshold', bookThreshold);
-                    localStorage.setItem('marketThreshold', marketThreshold);
-                    console.log(`Пороги скорректированы: Стакан = ${bookThreshold}%, Рынок = ${marketThreshold}%`);
-                }
             }
         }
 
@@ -478,6 +508,8 @@
                         this.orderBook = { bids: [], asks: [] };
                         this.bestEntry = null;
                         this.bestExit = null;
+                        this.lastCorrectionTime = 0;
+                        this.priceTrendHistory = [];
                     }
 
                     createModel() {
@@ -592,15 +624,26 @@
 
                         const bidVol = bidDepth;
                         const askVol = askDepth;
-                        const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
+                        const totalBookVol = bidVol + askVol;
+                        const rawBookDiff = totalBookVol > 0 ? ((bidVol - askVol) / totalBookVol) * 100 : 0;
                         bookDiffHistory.push(rawBookDiff);
                         if (bookDiffHistory.length > analysisSmoothingWindow) bookDiffHistory.shift();
-                        const smoothedBookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
+                        const smoothedBookDiff = bookDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100) : 0;
 
                         const marketData = aiTrader.getMarketData();
-                        marketDiffHistory.push(marketData.diff);
+                        const totalMarketVol = marketData.buyVol + marketData.sellVol;
+                        const rawMarketDiff = totalMarketVol > 0 ? ((marketData.buyVol - marketData.sellVol) / totalMarketVol) * 100 : 0;
+                        marketDiffHistory.push(rawMarketDiff);
                         if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
-                        const smoothedMarketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
+                        const smoothedMarketDiff = marketDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100) : 0;
+
+                        // Непрерывный анализ цены
+                        if (lastPrice !== null && previousPrice !== null) {
+                            const priceChange = lastPrice - previousPrice;
+                            this.priceTrendHistory.push({ time: now, priceChange, bookDiff: smoothedBookDiff, marketDiff: smoothedMarketDiff });
+                            if (this.priceTrendHistory.length > 60) this.priceTrendHistory.shift(); // Храним 60 секунд истории
+                        }
+                        previousPrice = lastPrice;
 
                         analysis.push(`Цена около ${lastPrice.toFixed(3)}. Каналы: широкий ${lowerWide.toFixed(3)}-${upperWide.toFixed(3)}, узкий ${lowerNarrow.toFixed(3)}-${upperNarrow.toFixed(3)}.`);
                         if (ema100Last > ema200Last) {
@@ -656,6 +699,51 @@
                         return recommendations.length > 0 ? recommendations.join('<br>') : "Нет активных рекомендаций.";
                     }
 
+                    adjustParameters() {
+                        const now = Date.now();
+                        if (this.priceTrendHistory.length < 30) return; // Ждем минимум 30 секунд данных
+
+                        const recentTrends = this.priceTrendHistory.slice(-30); // Последние 30 секунд
+                        const avgPriceChange = recentTrends.reduce((sum, t) => sum + t.priceChange, 0) / recentTrends.length;
+                        const avgBookDiff = recentTrends.reduce((sum, t) => sum + t.bookDiff, 0) / recentTrends.length;
+                        const avgMarketDiff = recentTrends.reduce((sum, t) => sum + t.marketDiff, 0) / recentTrends.length;
+
+                        let success = false;
+                        const recentTrades = tradeHistory[timeframe].slice(-5); // Последние 5 сделок
+                        if (recentTrades.length > 0) {
+                            const successfulTrades = recentTrades.filter(t => 
+                                (t.type === 'long' && t.profit > 0 && avgPriceChange > 0) || 
+                                (t.type === 'short' && t.profit > 0 && avgPriceChange < 0)
+                            ).length;
+                            success = successfulTrades / recentTrades.length > 0.5; // Более 50% успешных
+                        } else {
+                            success = (avgPriceChange > 0 && avgBookDiff > bookThreshold && avgMarketDiff > marketThreshold) || 
+                                     (avgPriceChange < 0 && avgBookDiff < -bookThreshold && avgMarketDiff < -marketThreshold);
+                        }
+
+                        if (success) {
+                            aiBookThreshold = Math.max(5, Math.min(25, aiBookThreshold + (Math.random() < 0.5 ? 1 : -1))); // Минимальная корректировка
+                            aiMarketThreshold = Math.max(10, Math.min(40, aiMarketThreshold + (Math.random() < 0.5 ? 1 : -1)));
+                            aiConfirmCount = Math.max(1, Math.min(10, aiConfirmCount + (Math.random() < 0.5 ? 1 : -1)));
+                        } else {
+                            aiBookThreshold = Math.max(5, Math.min(25, aiBookThreshold + (avgPriceChange > 0 ? 5 : -5))); // Значительная корректировка
+                            aiMarketThreshold = Math.max(10, Math.min(40, aiMarketThreshold + (avgPriceChange > 0 ? 5 : -5)));
+                            aiConfirmCount = Math.max(1, Math.min(10, aiConfirmCount + (avgPriceChange > 0 ? 2 : -2)));
+                        }
+
+                        if (isAiBookAuto) bookThreshold = aiBookThreshold;
+                        if (isAiMarketAuto) marketThreshold = aiMarketThreshold;
+                        if (isAiConfirmAuto) confirmCount = aiConfirmCount;
+
+                        document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
+                        document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
+                        document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
+
+                        const correctionColor = success ? '#00FF00' : '#FF0000';
+                        document.getElementById('aiCorrection').innerHTML = `Корректировка ИИ: Стакан: <span style="color:${correctionColor}">${aiBookThreshold}%</span>, Рынок: <span style="color:${correctionColor}">${aiMarketThreshold}%</span>, Подтверждений: <span style="color:${correctionColor}">${aiConfirmCount}</span>`;
+                        this.lastCorrectionTime = now;
+                    }
+
                     async trainAndUpdate() {
                         const now = Date.now();
                         if (now - lastEMAUpdate > 60000 || activeTrade === null) {
@@ -671,6 +759,10 @@
                         document.getElementById('aiAnalysis').innerHTML = await this.analyzeMarket();
                         document.getElementById('aiRecommendations').innerHTML = this.provideRecommendations();
                         updateChart();
+
+                        if (now - this.lastCorrectionTime >= 30000) { // Каждые 30 секунд
+                            this.adjustParameters();
+                        }
                     }
                 }
 
@@ -679,6 +771,8 @@
                 fetchInitialCandles();
                 fetchFearGreedIndex();
                 console.log('Backend:', tf.getBackend());
+
+                setInterval(() => aiAnalyst.adjustParameters(), 30000); // Корректировка каждые 30 секунд
             });
         }
 
@@ -762,8 +856,9 @@
             cachedEMA100 = null;
             cachedEMA200 = null;
             cachedRSI = null;
-            bookDiffHistory.length = 0; // Сбрасываем историю для сглаживания
+            bookDiffHistory.length = 0;
             marketDiffHistory.length = 0;
+            priceHistory.length = 0;
             fetchInitialCandles();
         });
 
@@ -866,17 +961,19 @@
             const avgOrderBookPrice = (bidDepth + askDepth) / 2;
             const bidVol = aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
             const askVol = aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-            const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
+            const totalBookVol = bidVol + askVol;
+            const rawBookDiff = totalBookVol > 0 ? ((bidVol - askVol) / totalBookVol) * 100 : 0;
             bookDiffHistory.push(rawBookDiff);
             if (bookDiffHistory.length > analysisSmoothingWindow) bookDiffHistory.shift();
-            const smoothedBookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
+            const smoothedBookDiff = bookDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100) : 0;
 
             const marketData = aiTrader.getMarketData();
-            marketDiffHistory.push(marketData.diff);
+            const totalMarketVol = marketData.buyVol + marketData.sellVol;
+            const rawMarketDiff = totalMarketVol > 0 ? ((marketData.buyVol - marketData.sellVol) / totalMarketVol) * 100 : 0;
+            marketDiffHistory.push(rawMarketDiff);
             if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
-            const smoothedMarketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
+            const smoothedMarketDiff = marketDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100) : 0;
 
-            // Сглаженное значение для квадратика (60% bookDiff + 40% marketDiff)
             const adjustedMood = (smoothedBookDiff * 0.6 + smoothedMarketDiff * 0.4);
             const orderBookColor = adjustedMood >= 0 ? '#00FF00' : '#FF0000';
 
