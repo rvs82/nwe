@@ -84,7 +84,7 @@
         let longConfirm = 0;
         let shortConfirm = 0;
         const smoothingWindow = 5; // Для сделок
-        const analysisSmoothingWindow = 10; // Для анализа ИИ
+        const analysisSmoothingWindow = 10; // Для анализа ИИ и квадратика
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
@@ -105,8 +105,7 @@
                     { label: 'EMA 100', data: [], borderColor: '#d873f6', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'EMA 200', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] },
-                    { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] },
-                    { label: 'Book Diff', data: [], borderColor: '#00ffff', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y2' }
+                    { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] }
                 ]
             },
             options: {
@@ -114,8 +113,7 @@
                 plugins: { legend: { display: false }, annotation: { annotations: [] } },
                 scales: {
                     x: { type: 'time', time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } }, title: { display: true, text: 'Time' }, ticks: { source: 'auto' }, bounds: 'data', offset: true, grid: { color: '#333333' } },
-                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); }, padding: 50 } },
-                    y2: { title: { display: true, text: 'Book Diff (%)' }, position: 'left', grid: { display: false }, ticks: { color: '#00ffff' }, min: -100, max: 100 }
+                    y: { title: { display: true, text: 'Price (USDT)' }, position: 'right', grid: { color: '#333333' }, ticks: { color: '#ffffff', callback: function(value) { return value.toFixed(4); }, padding: 50 } }
                 },
                 layout: { padding: { right: 0 } },
                 backgroundColor: '#000000',
@@ -234,7 +232,6 @@
         const thresholdHistory = [];
         const bookDiffHistory = [];
         const marketDiffHistory = [];
-        const bookDiffChartData = []; // Для графика
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
@@ -765,7 +762,8 @@
             cachedEMA100 = null;
             cachedEMA200 = null;
             cachedRSI = null;
-            bookDiffChartData.length = 0; // Сбрасываем данные графика
+            bookDiffHistory.length = 0; // Сбрасываем историю для сглаживания
+            marketDiffHistory.length = 0;
             fetchInitialCandles();
         });
 
@@ -868,7 +866,6 @@
             const avgOrderBookPrice = (bidDepth + askDepth) / 2;
             const bidVol = aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
             const askVol = aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-            const orderBookColor = bidVol > askVol ? '#00FF00' : '#FF0000';
             const rawBookDiff = bidVol > askVol ? ((bidVol - askVol) / askVol * 100) : -((askVol - bidVol) / bidVol * 100);
             bookDiffHistory.push(rawBookDiff);
             if (bookDiffHistory.length > analysisSmoothingWindow) bookDiffHistory.shift();
@@ -879,10 +876,9 @@
             if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
             const smoothedMarketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
 
-            // Корректируем bookDiff с учетом marketDiff (среднее взвешенное)
-            const adjustedBookDiff = (smoothedBookDiff * 0.6 + smoothedMarketDiff * 0.4);
-            bookDiffChartData.push({ x: lastPriceTime || new Date(), y: adjustedBookDiff });
-            if (bookDiffChartData.length > maxCandles) bookDiffChartData.shift();
+            // Сглаженное значение для квадратика (60% bookDiff + 40% marketDiff)
+            const adjustedMood = (smoothedBookDiff * 0.6 + smoothedMarketDiff * 0.4);
+            const orderBookColor = adjustedMood >= 0 ? '#00FF00' : '#FF0000';
 
             const annotations = displayCandles.map((c, i) => ({
                 type: 'box',
@@ -928,7 +924,6 @@
             chart.data.datasets[7].data = ema100Data;
             chart.data.datasets[8].data = ema200Data;
             chart.data.datasets[9].data = lastPriceData;
-            chart.data.datasets[11].data = bookDiffChartData; // Линия стакана на графике
             chart.update();
         }
     </script>
