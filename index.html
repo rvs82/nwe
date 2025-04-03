@@ -25,29 +25,36 @@
         .threshold-note { font-size: 12px; color: #999; }
         #thresholdControls { margin-top: 5px; }
         #aiCorrection { margin-top: 5px; font-size: 14px; }
+        #realStats { background: linear-gradient(to right, #a1f7a1, #76d776); padding: 10px; margin: 10px 0; border-radius: 5px; }
+        #testStats { background: linear-gradient(to right, #f7e1a1, #f5d76e); padding: 10px; margin: 10px 0; border-radius: 5px; }
     </style>
 </head>
 <body>
     <div id="tradeAlert"></div>
     <canvas id="priceChart"></canvas>
     <div id="infoBar">
-        <span id="currentPrice">Текущая цена: N/A</span> | 
-        <span id="stats">Открыто: 0 | Сделок: 0 (всего) / 0 (прибыльных) / 0 (убыточных) | Прибыль: 0 USDT | Убыток: 0 USDT</span> | 
-        <label><input type="checkbox" id="muteSound" checked> Звук</label> | 
-        <label>Подтверждений: 
-            <select id="confirmCountInput">
-                <option value="auto">Авто</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3" selected>3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-            </select>
-        </label>
-        <span id="currentConfirmCount">(Текущий: 3)</span>
-        <div class="threshold-note">Изменения применяются автоматически</div>
-        <div id="aiCorrection">Корректировка ИИ: Стакан: 5%, Рынок: 20%, Подтверждений: 3</div>
-        <div id="tradeInfo"></div>
+        <div id="realStats">
+            <span id="currentPrice">Текущая цена: N/A</span> | 
+            <span id="stats">Открыто: 0 | Сделок: 0 (всего) / 0 (прибыльных) / 0 (убыточных) | Прибыль: 0 USDT | Убыток: 0 USDT</span> | 
+            <label><input type="checkbox" id="muteSound" checked> Звук</label> | 
+            <label>Подтверждений: 
+                <select id="confirmCountInput">
+                    <option value="auto">Авто</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </label>
+            <span id="currentConfirmCount">(Текущий: 3)</span>
+            <div class="threshold-note">Изменения применяются автоматически</div>
+            <div id="aiCorrection">Корректировка ИИ: Стакан: 15%, Рынок: 50%, Подтверждений: 3</div>
+            <div id="tradeInfo"></div>
+        </div>
+        <div id="testStats">
+            <span id="testStatsText">Тестовые: Открыто: 0 | Сделок: 0 (всего) / 0 (прибыльных) / 0 (убыточных) | Прибыль: 0 USDT | Убыток: 0 USDT</span>
+        </div>
     </div>
     <div id="aiSection">
         <h2>ИИ</h2><div id="aiAnalysis"></div>
@@ -60,8 +67,7 @@
     <input type="file" id="uploadData" accept=".zip" style="display: none;" onchange="uploadData(event)">
     <button onclick="document.getElementById('uploadData').click()">Загрузить данные</button>
 
-    <script>
-        const h = 8;
+    <script>        const h = 8;
         let mult = 2.89;
         let mult2 = 1.7;
         const maxCandles = 50;
@@ -69,8 +75,8 @@
         const tradeSize = 100;
         const commissionRate = 0.0004;
         const timeframe = '1h';
-        let bookThreshold = 5;
-        let marketThreshold = 20;
+        let bookThreshold = 15;
+        let marketThreshold = 50;
         let confirmCount = localStorage.getItem('confirmCount') ? parseInt(localStorage.getItem('confirmCount')) : 3;
         let longConfirm = 0;
         let shortConfirm = 0;
@@ -81,10 +87,13 @@
         let aiConfirmCount = confirmCount;
         let isAiConfirmAuto = false;
         let previousPrice = null;
+        let isParametersFixed = false;
 
         const openSound = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
         const closeSound = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3');
         const alertSound = new Audio('https://www.soundjay.com/buttons/beep-08b.mp3');
+        const testOpenSound = new Audio('https://www.soundjay.com/buttons/beep-02.mp3');
+        const testCloseSound = new Audio('https://www.soundjay.com/buttons/beep-02.mp3');
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         const chart = new Chart(ctx, {
@@ -101,7 +110,8 @@
                     { label: 'EMA 100', data: [], borderColor: '#d873f6', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'EMA 200', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, fill: false },
                     { label: 'Last Price', data: [], borderColor: '#ffffff', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [5, 5] },
-                    { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] }
+                    { label: 'Trade Lines', data: [], borderColor: '#4caf50', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [2, 2] },
+                    { label: 'Test Trade Lines', data: [], borderColor: '#00BFFF', borderWidth: 2, pointRadius: 0, fill: false, borderDash: [5, 5] }
                 ]
             },
             options: {
@@ -156,7 +166,7 @@
                             color: '#fff', 
                             callback: function(value) { return value.toFixed(4); }, 
                             padding: 10,
-                            stepSize: null // Автоматический шаг
+                            stepSize: null
                         } 
                     }
                 },
@@ -232,157 +242,71 @@
             return ema;
         }
 
-        function calculateRSI(prices, period = 14) {
-            if (prices.length < period) return [];
-            const rsi = [];
-            let gains = 0, losses = 0;
-            for (let i = 1; i <= period; i++) {
-                const diff = prices[i] - prices[i - 1];
-                if (diff > 0) gains += diff;
-                else losses -= diff;
-            }
-            let avgGain = gains / period;
-            let avgLoss = losses / period;
-            rsi.push(100 - (100 / (1 + (avgGain / avgLoss))));
-            for (let i = period + 1; i < prices.length; i++) {
-                const diff = prices[i] - prices[i - 1];
-                const gain = diff > 0 ? diff : 0;
-                const loss = diff < 0 ? -diff : 0;
-                avgGain = (avgGain * (period - 1) + gain) / period;
-                avgLoss = (avgLoss * (period - 1) + loss) / period;
-                rsi.push(100 - (100 / (1 + (avgGain / avgLoss))));
-            }
-            return rsi;
-        }
-
         const candles = [];
         const closePrices = [];
         const volumes = [];
         let lastPrice = null;
         let lastPriceTime = null;
         let activeTrade = null;
+        let activeTestTrade = null;
         const tradeHistory = [];
+        const testTradeHistory = [];
         const tradeAnnotations = [];
+        const testTradeAnnotations = [];
         let aiEntryPoint = null;
         let aiExitPoint = null;
         let fearGreedIndex = null;
-        let cachedNWE = null, cachedNWE2 = null, cachedEMA100 = null, cachedEMA200 = null, cachedRSI = null;
+        let cachedNWE = null, cachedNWE2 = null, cachedEMA100 = null, cachedEMA200 = null;
         let lastNWEUpdate = 0, lastEMAUpdate = 0;
         const chartBuffer = [];
         const tradeBuffer = [];
-        const thresholdHistory = [];
         const bookDiffHistory = [];
         const marketDiffHistory = [];
-        let priceHistory = [];
+        const priceHistory = [];
+        let lastForecast = null;
+        let lastForecastTime = null;
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
-                if (!activeTrade && price && time && lowerWide && upperWide && lowerNarrow && upperNarrow) {
-                    const ema100 = cachedEMA100 || calculateEMA(closePrices, 100);
-                    const ema200 = cachedEMA200 || calculateEMA(closePrices, 200);
-                    const ema100Last = ema100[ema100.length - 1];
-                    const ema200Last = ema200[ema200.length - 1];
-                    const bidVol = aiAnalyst.orderBook.bids.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    const askVol = aiAnalyst.orderBook.asks.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-                    const totalBookVol = bidVol + askVol;
-                    const rawBookDiff = totalBookVol > 0 ? ((bidVol - askVol) / totalBookVol) * 100 : 0;
-                    bookDiffHistory.push(rawBookDiff);
-                    if (bookDiffHistory.length > smoothingWindow) bookDiffHistory.shift();
-                    const bookDiff = Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100);
+                const ema100 = cachedEMA100 || calculateEMA(closePrices, 100);
+                const ema200 = cachedEMA200 || calculateEMA(closePrices, 200);
+                const bidVol = aiAnalyst.orderBook.bids.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                const askVol = aiAnalyst.orderBook.asks.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
+                const totalBookVol = bidVol + askVol;
+                const rawBookDiff = totalBookVol > 0 ? ((bidVol - askVol) / totalBookVol) * 100 : 0;
+                bookDiffHistory.push(rawBookDiff);
+                if (bookDiffHistory.length > smoothingWindow) bookDiffHistory.shift();
+                const bookDiff = bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length;
 
-                    const marketData = this.getMarketData();
-                    marketDiffHistory.push(marketData.diff);
-                    if (marketDiffHistory.length > smoothingWindow) marketDiffHistory.shift();
-                    const marketDiff = Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100);
+                const marketData = this.getMarketData();
+                marketDiffHistory.push(marketData.diff);
+                if (marketDiffHistory.length > smoothingWindow) marketDiffHistory.shift();
+                const marketDiff = marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length;
 
-                    const emaDistanceToTP = (type) => type === 'long' ? (upperNarrow - ema100Last) / (upperNarrow - price) : (ema100Last - lowerNarrow) / (price - lowerNarrow);
+                const bookDiffTrend = bookDiffHistory.length >= 5 ? ((bookDiffHistory[bookDiffHistory.length - 1] - bookDiffHistory[bookDiffHistory.length - 5]) / Math.abs(bookDiffHistory[bookDiffHistory.length - 5] || 1)) * 100 : 0;
+                const marketDiffTrend = marketDiffHistory.length >= 5 ? ((marketDiffHistory[marketDiffHistory.length - 1] - marketDiffHistory[marketDiffHistory.length - 5]) / Math.abs(marketDiffHistory[marketDiffHistory.length - 5] || 1)) * 100 : 0;
 
-                    if ((price <= lowerWide || price === lowerWide) && bidVol > askVol && marketData.buyVol > marketData.sellVol) {
-                        const emaRisk = emaDistanceToTP('long');
-                        const logEntry = [];
-                        logEntry.push(`Цена = ${price.toFixed(4)}`);
-                        logEntry.push(`Стакан: ${bookDiff.toFixed(1)}%`);
-                        logEntry.push(`Рынок: ${marketDiff.toFixed(1)}%`);
-
-                        let takeProfit = upperNarrow;
-                        let aiPrediction = aiAnalyst.predictOptimalPoints();
-                        const emaBetween = price < ema100Last && ema100Last < upperNarrow;
-
-                        if (emaBetween && emaRisk <= 0.25) {
-                            if (aiPrediction && aiPrediction.entry && aiPrediction.entry.type === 'long' && aiPrediction.exit.price > ema100Last) {
-                                takeProfit = upperNarrow;
-                                logEntry.push("ИИ: EMA будет пробита, TP на узкой границе");
-                            } else {
-                                takeProfit = ema100Last;
-                                logEntry.push("TP установлен на EMA 100");
-                            }
-                        }
-
-                        if (bookDiff >= bookThreshold && marketDiff >= marketThreshold) {
-                            longConfirm++;
-                            logEntry.push(`Подтверждений лонга: ${longConfirm}/${confirmCount}`);
-                            shortConfirm = 0;
-                            if (longConfirm >= confirmCount) {
-                                this.openTrade('long', price, time, takeProfit);
-                                logEntry.push("Причина: Стакан и рынок подтверждены");
-                                this.updateAILog(`Лонг открыт: ${logEntry.join(', ')}`);
-                                this.adjustThresholds(bookDiff, marketDiff, true);
-                                longConfirm = 0;
-                            } else {
-                                this.updateAILog(`Ожидание подтверждения: ${logEntry.join(', ')}`);
-                            }
-                        } else {
+                if (!activeTrade && price && time) {
+                    if (bookDiff >= bookThreshold && marketDiff >= marketThreshold && bookDiffTrend > 50 && marketDiffTrend > 100) {
+                        longConfirm++;
+                        shortConfirm = 0;
+                        if (longConfirm >= confirmCount) {
+                            this.openTrade('long', price, time, upperNarrow);
+                            this.updateAILog(`Лонг открыт: Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%`);
                             longConfirm = 0;
-                            if (bookDiff < bookThreshold) logEntry.push("Причина: % покупок в стакане ниже порога");
-                            if (marketDiff < marketThreshold) logEntry.push("Причина: % покупок на рынке ниже порога");
-                            this.updateAILog(`Сделка не открыта: ${logEntry.join(', ')}`);
-                            this.adjustThresholds(bookDiff, marketDiff, false);
                         }
-                    } else if ((price >= upperWide || price === upperWide) && askVol > bidVol && marketData.sellVol > marketData.buyVol) {
-                        const emaRisk = emaDistanceToTP('short');
-                        const logEntry = [];
-                        logEntry.push(`Цена = ${price.toFixed(4)}`);
-                        logEntry.push(`Стакан: ${bookDiff.toFixed(1)}%`);
-                        logEntry.push(`Рынок: ${marketDiff.toFixed(1)}%`);
-
-                        let takeProfit = lowerNarrow;
-                        let aiPrediction = aiAnalyst.predictOptimalPoints();
-                        const emaBetween = lowerNarrow < ema100Last && ema100Last < price;
-
-                        if (emaBetween && emaRisk <= 0.25) {
-                            if (aiPrediction && aiPrediction.entry && aiPrediction.entry.type === 'short' && aiPrediction.exit.price < ema100Last) {
-                                takeProfit = lowerNarrow;
-                                logEntry.push("ИИ: EMA будет пробита, TP на узкой границе");
-                            } else {
-                                takeProfit = ema100Last;
-                                logEntry.push("TP установлен на EMA 100");
-                            }
-                        }
-
-                        if (bookDiff >= bookThreshold && marketDiff >= marketThreshold) {
-                            shortConfirm++;
-                            logEntry.push(`Подтверждений шорта: ${shortConfirm}/${confirmCount}`);
-                            longConfirm = 0;
-                            if (shortConfirm >= confirmCount) {
-                                this.openTrade('short', price, time, takeProfit);
-                                logEntry.push("Причина: Стакан и рынок подтверждены");
-                                this.updateAILog(`Шорт открыт: ${logEntry.join(', ')}`);
-                                this.adjustThresholds(bookDiff, marketDiff, true);
-                                shortConfirm = 0;
-                            } else {
-                                this.updateAILog(`Ожидание подтверждения: ${logEntry.join(', ')}`);
-                            }
-                        } else {
+                    } else if (bookDiff <= -bookThreshold && marketDiff <= -marketThreshold && bookDiffTrend < -50 && marketDiffTrend < -100) {
+                        shortConfirm++;
+                        longConfirm = 0;
+                        if (shortConfirm >= confirmCount) {
+                            this.openTrade('short', price, time, lowerNarrow);
+                            this.updateAILog(`Шорт открыт: Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%`);
                             shortConfirm = 0;
-                            if (bookDiff < bookThreshold) logEntry.push("Причина: % продаж в стакане ниже порога");
-                            if (marketDiff < marketThreshold) logEntry.push("Причина: % продаж на рынке ниже порога");
-                            this.updateAILog(`Сделка не открыта: ${logEntry.join(', ')}`);
-                            this.adjustThresholds(bookDiff, marketDiff, false);
                         }
                     } else {
                         longConfirm = 0;
                         shortConfirm = 0;
-                        this.updateAILog(`Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%, Цена в канале, ожидание`);
+                        this.updateAILog(`Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%, Ожидание разворота`);
                     }
                 } else if (activeTrade) {
                     this.updateTakeProfit(time, lowerNarrow, upperNarrow);
@@ -390,6 +314,23 @@
                     this.checkLossOnOpenPrice(price);
                     this.updateTradeInfo();
                 }
+
+                if (!activeTestTrade && price && time) {
+                    if (bookDiff >= bookThreshold && marketDiff >= marketThreshold && bookDiffTrend > 50 && marketDiffTrend > 100) {
+                        this.openTestTrade('long', price, time, upperNarrow);
+                        this.updateAILog(`Тестовый лонг открыт: Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%`);
+                    } else if (bookDiff <= -bookThreshold && marketDiff <= -marketThreshold && bookDiffTrend < -50 && marketDiffTrend < -100) {
+                        this.openTestTrade('short', price, time, lowerNarrow);
+                        this.updateAILog(`Тестовый шорт открыт: Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%`);
+                    }
+                } else if (activeTestTrade) {
+                    this.updateTestTakeProfit(time, lowerNarrow, upperNarrow);
+                    this.checkCloseTestTrade(price);
+                    this.checkTestStopLoss(price);
+                    this.updateTestTradeInfo();
+                }
+
+                this.updateForecast(bookDiffTrend, marketDiffTrend);
                 updateDataSize();
             }
 
@@ -405,10 +346,47 @@
                 if (document.getElementById('muteSound').checked) openSound.play();
             }
 
+            openTestTrade(type, price, time, takeProfit) {
+                const priceRange = priceHistory.length >= 5 ? Math.max(...priceHistory.slice(-5)) - Math.min(...priceHistory.slice(-5)) : price * 0.02;
+                const profitDistance = Math.abs(takeProfit - price);
+                let riskRewardRatio = 2;
+                const bookDiffTrend = bookDiffHistory.length >= 5 ? ((bookDiffHistory[bookDiffHistory.length - 1] - bookDiffHistory[bookDiffHistory.length - 5]) / Math.abs(bookDiffHistory[bookDiffHistory.length - 5] || 1)) * 100 : 0;
+                const marketDiffTrend = marketDiffHistory.length >= 5 ? ((marketDiffHistory[marketDiffHistory.length - 1] - marketDiffHistory[marketDiffHistory.length - 5]) / Math.abs(marketDiffHistory[marketDiffHistory.length - 5] || 1)) * 100 : 0;
+                if (Math.abs(bookDiffTrend) > 100 || Math.abs(marketDiffTrend) > 1000) {
+                    riskRewardRatio = Math.max(3, Math.abs(marketDiffTrend) / 1000);
+                }
+                const stopLossDistance = profitDistance / riskRewardRatio;
+                const stopLoss = type === 'long' ? price - stopLossDistance : price + stopLossDistance;
+
+                activeTestTrade = { type, openPrice: price, openTime: time, takeProfit, stopLoss, size: tradeSize, startTime: Date.now(), riskRewardRatio };
+                const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
+                const maxTime = candles[candles.length - 1]?.x.getTime() + 60*60*1000 || time.getTime() + 60*60*1000;
+                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: price, yMax: price, borderColor: '#00BFFF', borderWidth: 2, id: 'testOpenLine', borderDash: [5, 5] });
+                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: takeProfit, yMax: takeProfit, borderColor: '#00BFFF', borderWidth: 2, id: 'testTpLine', borderDash: [5, 5] });
+                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: stopLoss, yMax: stopLoss, borderColor: '#FF4040', borderWidth: 2, id: 'testSlLine', borderDash: [5, 5] });
+                this.updateTestTradeInfo();
+                updateTestStats();
+                if (document.getElementById('muteSound').checked) testOpenSound.play();
+            }
+
             updateTakeProfit(time, lowerNarrow, upperNarrow) {
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
+                const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
+                const maxTime = candles[candles.length - 1]?.x.getTime() + 60*60*1000 || time.getTime() + 60*60*1000;
+                if (tpAnnotation) {
+                    tpAnnotation.xMin = minTime;
+                    tpAnnotation.xMax = maxTime;
+                    tpAnnotation.yMin = tp;
+                    tpAnnotation.yMax = tp;
+                }
+            }
+
+            updateTestTakeProfit(time, lowerNarrow, upperNarrow) {
+                const tp = activeTestTrade.type === 'long' ? upperNarrow : lowerNarrow;
+                activeTestTrade.takeProfit = tp;
+                const tpAnnotation = testTradeAnnotations.find(a => a.id === 'testTpLine');
                 const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
                 const maxTime = candles[candles.length - 1]?.x.getTime() + 60*60*1000 || time.getTime() + 60*60*1000;
                 if (tpAnnotation) {
@@ -437,6 +415,35 @@
                     } else if (activeTrade.type === 'short' && price >= activeTrade.openPrice) {
                         this.closeTradeInLoss(price);
                         this.updateAILog(`Шорт закрыт в убыток: Цена = ${price.toFixed(4)}, достигла уровня открытия ${activeTrade.openPrice.toFixed(4)}`);
+                    }
+                }
+            }
+
+            checkCloseTestTrade(price) {
+                const timeSinceOpen = (Date.now() - activeTestTrade.startTime) / (1000 * 60 * 60);
+                const bookDiffTrend = bookDiffHistory.length >= 5 ? ((bookDiffHistory[bookDiffHistory.length - 1] - bookDiffHistory[bookDiffHistory.length - 5]) / Math.abs(bookDiffHistory[bookDiffHistory.length - 5] || 1)) * 100 : 0;
+                const marketDiffTrend = marketDiffHistory.length >= 5 ? ((marketDiffHistory[marketDiffHistory.length - 1] - marketDiffHistory[marketDiffHistory.length - 5]) / Math.abs(marketDiffHistory[marketDiffHistory.length - 5] || 1)) * 100 : 0;
+
+                if (activeTestTrade.type === 'long' && price >= activeTestTrade.takeProfit) {
+                    this.closeTestTrade(price);
+                    this.updateAILog(`Тестовый лонг закрыт: Цена = ${price.toFixed(4)}, TP = ${activeTestTrade.takeProfit.toFixed(4)} достигнут`);
+                } else if (activeTestTrade.type === 'short' && price <= activeTestTrade.takeProfit) {
+                    this.closeTestTrade(price);
+                    this.updateAILog(`Тестовый шорт закрыт: Цена = ${price.toFixed(4)}, TP = ${activeTestTrade.takeProfit.toFixed(4)} достигнут`);
+                } else if (timeSinceOpen >= 3 || (activeTestTrade.type === 'long' && (bookDiffTrend < -50 || marketDiffTrend < -100)) || (activeTestTrade.type === 'short' && (bookDiffTrend > 50 || marketDiffTrend > 100))) {
+                    this.closeTestTrade(price);
+                    this.updateAILog(`Тестовая сделка закрыта: Цена = ${price.toFixed(4)}, время или разворот`);
+                }
+            }
+
+            checkTestStopLoss(price) {
+                if (activeTestTrade) {
+                    if (activeTestTrade.type === 'long' && price <= activeTestTrade.stopLoss) {
+                        this.closeTestTrade(price);
+                        this.updateAILog(`Тестовый лонг закрыт по стоп-лоссу: Цена = ${price.toFixed(4)}, Стоп = ${activeTestTrade.stopLoss.toFixed(4)}`);
+                    } else if (activeTestTrade.type === 'short' && price >= activeTestTrade.stopLoss) {
+                        this.closeTestTrade(price);
+                        this.updateAILog(`Тестовый шорт закрыт по стоп-лоссу: Цена = ${price.toFixed(4)}, Стоп = ${activeTestTrade.stopLoss.toFixed(4)}`);
                     }
                 }
             }
@@ -485,6 +492,26 @@
                 if (document.getElementById('muteSound').checked) closeSound.play();
             }
 
+            closeTestTrade(price) {
+                const positionSize = tradeSize / activeTestTrade.openPrice;
+                const rawProfit = activeTestTrade.type === 'long' ? (price - activeTestTrade.openPrice) * positionSize : (activeTestTrade.openPrice - price) * positionSize;
+                const commission = (tradeSize + (tradeSize + rawProfit)) * commissionRate;
+                const profit = rawProfit - commission;
+                
+                testTradeHistory.push({ type: activeTestTrade.type, openPrice: activeTestTrade.openPrice, closePrice: price, openTime: activeTestTrade.openTime, closeTime: lastPriceTime, profit: profit > 0 ? profit : 0, loss: profit < 0 ? profit : 0 });
+                const closeTime = lastPriceTime;
+                const tradeColor = activeTestTrade.type === 'long' ? '#00ff00' : '#ff0000';
+                testTradeAnnotations.push({ type: 'point', xValue: activeTestTrade.openTime, yValue: activeTestTrade.openPrice, backgroundColor: tradeColor, borderColor: tradeColor, radius: 4 });
+                testTradeAnnotations.push({ type: 'point', xValue: closeTime, yValue: price, backgroundColor: tradeColor, borderColor: tradeColor, radius: 4 });
+                chart.data.datasets[11].data.push({ x: activeTestTrade.openTime, y: activeTestTrade.openPrice }, { x: closeTime, y: price }, { x: null, y: null });
+                testTradeAnnotations.splice(testTradeAnnotations.findIndex(a => a.id === 'testOpenLine'), 1);
+                testTradeAnnotations.splice(testTradeAnnotations.findIndex(a => a.id === 'testTpLine'), 1);
+                testTradeAnnotations.splice(testTradeAnnotations.findIndex(a => a.id === 'testSlLine'), 1);
+                activeTestTrade = null;
+                updateTestStats();
+                if (document.getElementById('muteSound').checked) testCloseSound.play();
+            }
+
             updateTradeInfo() {
                 const tradeInfoElement = document.getElementById('tradeInfo');
                 if (activeTrade) {
@@ -496,6 +523,17 @@
                     tradeInfoElement.textContent = `${activeTrade.type.toUpperCase()} | Вход: ${activeTrade.openPrice.toFixed(4)} | TP: ${activeTrade.takeProfit.toFixed(4)} | Время: ${timeStr}`;
                 } else {
                     tradeInfoElement.textContent = '';
+                }
+            }
+
+            updateTestTradeInfo() {
+                if (activeTestTrade) {
+                    const risk = Math.abs(activeTestTrade.openPrice - activeTestTrade.stopLoss);
+                    const reward = Math.abs(activeTestTrade.takeProfit - activeTestTrade.openPrice);
+                    const riskRewardRatio = reward / risk;
+                    document.getElementById('testStatsText').textContent = `Тестовые: Открыто: 1 | Сделок: ${testTradeHistory.length} (всего) / <span style="color: #00FF00">${testTradeHistory.filter(t => t.profit > 0).length}</span> (прибыльных) / <span style="color: #FF0000">${testTradeHistory.filter(t => t.loss < 0).length}</span> (убыточных) | Прибыль: ${testTradeHistory.reduce((sum, t) => sum + (t.profit || 0), 0).toFixed(2)} USDT | Убыток: ${testTradeHistory.reduce((sum, t) => sum + (t.loss || 0), 0).toFixed(2)} USDT | Риск/Прибыль: 1:${riskRewardRatio.toFixed(2)}`;
+                } else {
+                    document.getElementById('testStatsText').textContent = `Тестовые: Открыто: 0 | Сделок: ${testTradeHistory.length} (всего) / <span style="color: #00FF00">${testTradeHistory.filter(t => t.profit > 0).length}</span> (прибыльных) / <span style="color: #FF0000">${testTradeHistory.filter(t => t.loss < 0).length}</span> (убыточных) | Прибыль: ${testTradeHistory.reduce((sum, t) => sum + (t.profit || 0), 0).toFixed(2)} USDT | Убыток: ${testTradeHistory.reduce((sum, t) => sum + (t.loss || 0), 0).toFixed(2)} USDT`;
                 }
             }
 
@@ -520,9 +558,24 @@
                 log.scrollTop = 0;
             }
 
-            adjustThresholds(bookDiff, marketDiff, success) {
-                thresholdHistory.push({ bookDiff, marketDiff, success, priceChange: lastPrice - (closePrices[closePrices.length - 2] || lastPrice) });
-                if (thresholdHistory.length > 10) thresholdHistory.shift();
+            updateForecast(bookDiffTrend, marketDiffTrend) {
+                if (bookDiffTrend > 50 && marketDiffTrend > 100) {
+                    lastForecast = 'long';
+                    lastForecastTime = Date.now();
+                    this.updateAILog(`Прогноз: <span style="color: #00FF00">Лонг</span>`);
+                } else if (bookDiffTrend < -50 && marketDiffTrend < -100) {
+                    lastForecast = 'short';
+                    lastForecastTime = Date.now();
+                    this.updateAILog(`Прогноз: <span style="color: #FF0000">Шорт</span>`);
+                }
+
+                if (lastForecast && (Date.now() - lastForecastTime) >= 5 * 60 * 60 * 1000) {
+                    const priceChange = closePrices[closePrices.length - 1] - closePrices[closePrices.length - 6];
+                    const isCorrect = (lastForecast === 'long' && priceChange > 0) || (lastForecast === 'short' && priceChange < 0);
+                    this.updateAILog(`Прогноз ${isCorrect ? 'верный' : 'неверный'}: Цена изменилась на ${priceChange.toFixed(4)}`);
+                    lastForecast = null;
+                    lastForecastTime = null;
+                }
             }
         }
 
@@ -561,11 +614,10 @@
                         const { nwe: nweWide } = calculateNWE(closePrices, mult);
                         const { nwe: nweNarrow } = calculateNWE(closePrices, mult2);
                         const ema100 = calculateEMA(closePrices, 100);
-                        const rsi = calculateRSI(closePrices);
                         for (let i = lookback; i < closePrices.length - 1; i++) {
                             const input = [];
                             for (let j = i - lookback; j < i; j++) {
-                                input.push([closePrices[j], nweWide[j] - closePrices[j], ema100[j] - closePrices[j], volumes[j] || 0, rsi[j - 14] || 50]);
+                                input.push([closePrices[j], nweWide[j] - closePrices[j], ema100[j] - closePrices[j], volumes[j] || 0, 50]);
                             }
                             const trade = tradeHistory.find(t => Math.abs(new Date(t.openTime) - new Date(candles[i].x)) < 60*60*1000);
                             const profit = trade ? trade.profit : 0;
@@ -587,10 +639,9 @@
                         const { nwe: nweNarrow, sae: saeNarrow } = calculateNWE(closePrices, mult2);
                         const ema100 = calculateEMA(closePrices, 100);
                         const ema200 = calculateEMA(closePrices, 200);
-                        const rsi = calculateRSI(closePrices);
                         const input = [];
                         for (let i = closePrices.length - lookback; i < closePrices.length; i++) {
-                            input.push([closePrices[i], nweWide[i] - closePrices[i], ema100[i] - closePrices[i], volumes[i] || 0, rsi[i - 14] || 50]);
+                            input.push([closePrices[i], nweWide[i] - closePrices[i], ema100[i] - closePrices[i], volumes[i] || 0, 50]);
                         }
                         const inputTensor = tf.tensor3d([input]);
                         const prediction = this.model.predict(inputTensor);
@@ -640,7 +691,6 @@
                             cachedEMA200 = calculateEMA(closePrices, 200);
                             lastEMAUpdate = now;
                         }
-                        cachedRSI = calculateRSI(closePrices);
                         const lastPrice = closePrices[closePrices.length - 1];
                         const middle = cachedNWE.nwe[cachedNWE.nwe.length - 1];
                         const upperWide = middle + cachedNWE.sae;
@@ -649,7 +699,6 @@
                         const lowerNarrow = middle - cachedNWE2.sae;
                         const ema100Last = cachedEMA100[cachedEMA100.length - 1];
                         const ema200Last = cachedEMA200[cachedEMA200.length - 1];
-                        const rsiLast = cachedRSI[cachedRSI.length - 1];
                         const bidDepth = this.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
                         const askDepth = this.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
                         const avgVolume = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
@@ -660,14 +709,14 @@
                         const rawBookDiff = totalBookVol > 0 ? ((bidVol - askVol) / totalBookVol) * 100 : 0;
                         bookDiffHistory.push(rawBookDiff);
                         if (bookDiffHistory.length > analysisSmoothingWindow) bookDiffHistory.shift();
-                        const smoothedBookDiff = bookDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100) : 0;
+                        const smoothedBookDiff = bookDiffHistory.length >= analysisSmoothingWindow ? bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length : 0;
 
                         const marketData = aiTrader.getMarketData();
                         const totalMarketVol = marketData.buyVol + marketData.sellVol;
                         const rawMarketDiff = totalMarketVol > 0 ? ((marketData.buyVol - marketData.sellVol) / totalMarketVol) * 100 : 0;
                         marketDiffHistory.push(rawMarketDiff);
                         if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
-                        const smoothedMarketDiff = marketDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100) : 0;
+                        const smoothedMarketDiff = marketDiffHistory.length >= analysisSmoothingWindow ? marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length : 0;
 
                         if (lastPrice !== null && previousPrice !== null) {
                             const priceChange = lastPrice - previousPrice;
@@ -715,8 +764,8 @@
                         const ema100Last = cachedEMA100 ? cachedEMA100[cachedEMA100.length - 1] : 0;
                         const ema200Last = cachedEMA200 ? cachedEMA200[cachedEMA200.length - 1] : 0;
                         const lastPrice = closePrices[closePrices.length - 1];
-                        const smoothedBookDiff = bookDiffHistory.length ? Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100) : 0;
-                        const smoothedMarketDiff = marketDiffHistory.length ? Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100) : 0;
+                        const smoothedBookDiff = bookDiffHistory.length ? bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length : 0;
+                        const smoothedMarketDiff = marketDiffHistory.length ? marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length : 0;
 
                         if (ema100Last > ema200Last && lastPrice < ema100Last && smoothedBookDiff > 20 && smoothedMarketDiff > 20) {
                             recommendations.push("Рынок разворачивается вверх, возможен рост.");
@@ -740,36 +789,50 @@
                         const avgMarketDiff = recentTrends.reduce((sum, t) => sum + t.marketDiff, 0) / recentTrends.length;
 
                         let success = false;
-                        const recentTrades = tradeHistory.slice(-5);
+                        const recentTrades = testTradeHistory.slice(-5);
+                        const priceChange = priceHistory.length >= 3 ? priceHistory[priceHistory.length - 1] - priceHistory[priceHistory.length - 3] : 0;
                         if (recentTrades.length > 0) {
-                            const successfulTrades = recentTrades.filter(t => 
-                                (t.type === 'long' && t.profit > 0 && avgPriceChange > 0) || 
-                                (t.type === 'short' && t.profit > 0 && avgPriceChange < 0)
-                            ).length;
+                            const successfulTrades = recentTrades.filter(t => t.profit > 0).length;
                             success = successfulTrades / recentTrades.length > 0.5;
                         } else {
                             success = (avgPriceChange > 0 && avgBookDiff > bookThreshold && avgMarketDiff > marketThreshold) || 
                                      (avgPriceChange < 0 && avgBookDiff < -bookThreshold && avgMarketDiff < -marketThreshold);
                         }
 
-                        if (success) {
-                            aiBookThreshold = Math.max(0, Math.min(100, aiBookThreshold + (Math.random() < 0.5 ? 0.5 : -0.5)));
-                            aiMarketThreshold = Math.max(0, Math.min(100, aiMarketThreshold + (Math.random() < 0.5 ? 0.5 : -0.5)));
-                            aiConfirmCount = Math.max(1, Math.min(5, aiConfirmCount + (Math.random() < 0.5 ? 1 : -1)));
+                        if (isParametersFixed) {
+                            const recentProfitability = testTradeHistory.length >= 10 ? testTradeHistory.slice(-10).filter(t => t.profit > 0).length / 10 : 1;
+                            if (recentProfitability < 0.6) {
+                                isParametersFixed = false;
+                                document.getElementById('aiCorrection').style.color = '#ffffff';
+                            }
                         } else {
-                            aiBookThreshold = Math.max(0, Math.min(100, Math.abs(avgBookDiff) * 0.8));
-                            aiMarketThreshold = Math.max(0, Math.min(100, Math.abs(avgMarketDiff) * 0.8));
-                            aiConfirmCount = Math.max(1, Math.min(5, aiConfirmCount + (avgPriceChange > 0 ? -1 : 1)));
+                            if (success) {
+                                aiBookThreshold = Math.max(0, aiBookThreshold + (avgBookDiff * 0.05));
+                                aiMarketThreshold = Math.max(0, aiMarketThreshold + (avgMarketDiff * 0.05));
+                                aiConfirmCount = Math.max(1, Math.min(5, aiConfirmCount - 1));
+                            } else {
+                                aiBookThreshold = Math.max(0, Math.abs(avgBookDiff) * 0.95);
+                                aiMarketThreshold = Math.max(0, Math.abs(avgMarketDiff) * 0.95);
+                                aiConfirmCount = Math.max(1, Math.min(5, aiConfirmCount + 1));
+                            }
+
+                            if (testTradeHistory.length >= 10) {
+                                const recentProfitability = testTradeHistory.slice(-10).filter(t => t.profit > 0).length / 10;
+                                if (recentProfitability >= 0.8) {
+                                    isParametersFixed = true;
+                                    document.getElementById('aiCorrection').style.color = '#00FF00';
+                                }
+                            }
+
+                            bookThreshold = aiBookThreshold;
+                            marketThreshold = aiMarketThreshold;
+                            if (isAiConfirmAuto) confirmCount = aiConfirmCount;
+
+                            document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
+
+                            const correctionColor = success ? '#00FF00' : '#FF0000';
+                            document.getElementById('aiCorrection').innerHTML = `Корректировка ИИ: Стакан: <span style="color:${correctionColor}">${aiBookThreshold.toFixed(1)}%</span>, Рынок: <span style="color:${correctionColor}">${aiMarketThreshold.toFixed(1)}%</span>, Подтверждений: <span style="color:${correctionColor}">${aiConfirmCount}</span>`;
                         }
-
-                        bookThreshold = aiBookThreshold;
-                        marketThreshold = aiMarketThreshold;
-                        if (isAiConfirmAuto) confirmCount = aiConfirmCount;
-
-                        document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
-
-                        const correctionColor = success ? '#00FF00' : '#FF0000';
-                        document.getElementById('aiCorrection').innerHTML = `Корректировка ИИ: Стакан: <span style="color:${correctionColor}">${aiBookThreshold.toFixed(1)}%</span>, Рынок: <span style="color:${correctionColor}">${aiMarketThreshold.toFixed(1)}%</span>, Подтверждений: <span style="color:${correctionColor}">${aiConfirmCount}</span>`;
                         this.lastCorrectionTime = now;
                     }
 
@@ -788,10 +851,6 @@
                         document.getElementById('aiAnalysis').innerHTML = await this.analyzeMarket();
                         document.getElementById('aiRecommendations').innerHTML = this.provideRecommendations();
                         updateChart();
-
-                        if (now - this.lastCorrectionTime >= 30000) {
-                            this.adjustParameters();
-                        }
                     }
                 }
 
@@ -801,7 +860,7 @@
                 fetchFearGreedIndex();
                 console.log('Backend:', tf.getBackend());
 
-                setInterval(() => aiAnalyst.adjustParameters(), 30000);
+                setInterval(() => aiAnalyst.adjustParameters(), 300000);
             });
         }
 
@@ -815,6 +874,23 @@
             const profitableTrades = tradeHistory.filter(trade => (trade.profit || 0) > 0).length;
             const losingTrades = tradeHistory.filter(trade => (trade.loss || 0) < 0).length;
             document.getElementById('stats').textContent = `Открыто: ${openTrades} | Сделок: ${totalTrades} (всего) / <span style="color: #00FF00">${profitableTrades}</span> (прибыльных) / <span style="color: #FF0000">${losingTrades}</span> (убыточных) | Прибыль: ${totalProfit.toFixed(2)} USDT | Убыток: ${totalLoss.toFixed(2)} USDT`;
+        }
+
+        function updateTestStats() {
+            const totalProfit = testTradeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
+            const totalLoss = testTradeHistory.reduce((sum, trade) => sum + (trade.loss || 0), 0);
+            const openTrades = activeTestTrade ? 1 : 0;
+            const totalTrades = testTradeHistory.length;
+            const profitableTrades = testTradeHistory.filter(trade => (trade.profit || 0) > 0).length;
+            const losingTrades = testTradeHistory.filter(trade => (trade.loss || 0) < 0).length;
+            if (activeTestTrade) {
+                const risk = Math.abs(activeTestTrade.openPrice - activeTestTrade.stopLoss);
+                const reward = Math.abs(activeTestTrade.takeProfit - activeTestTrade.openPrice);
+                const riskRewardRatio = reward / risk;
+                document.getElementById('testStatsText').textContent = `Тестовые: Открыто: ${openTrades} | Сделок: ${totalTrades} (всего) / <span style="color: #00FF00">${profitableTrades}</span> (прибыльных) / <span style="color: #FF0000">${losingTrades}</span> (убыточных) | Прибыль: ${totalProfit.toFixed(2)} USDT | Убыток: ${totalLoss.toFixed(2)} USDT | Риск/Прибыль: 1:${riskRewardRatio.toFixed(2)}`;
+            } else {
+                document.getElementById('testStatsText').textContent = `Тестовые: Открыто: ${openTrades} | Сделок: ${totalTrades} (всего) / <span style="color: #00FF00">${profitableTrades}</span> (прибыльных) / <span style="color: #FF0000">${losingTrades}</span> (убыточных) | Прибыль: ${totalProfit.toFixed(2)} USDT | Убыток: ${totalLoss.toFixed(2)} USDT`;
+            }
         }
 
         function updateTradeLog() {
@@ -857,6 +933,8 @@
                 lastPriceTime = new Date(data.T);
                 tradeBuffer.push({ time: data.T, qty: data.q, isBuyer: data.m });
                 document.getElementById('currentPrice').textContent = `Текущая цена: ${lastPrice.toFixed(4)}`;
+                priceHistory.push(lastPrice);
+                if (priceHistory.length > 10) priceHistory.shift();
             }
         };
 
@@ -911,6 +989,65 @@
             } catch (error) {
                 console.error("Error fetching initial candles:", error);
             }
+        }
+
+        function downloadData() {
+            const dataToSave = {
+                tradeHistory,
+                testTradeHistory,
+                bookThreshold,
+                marketThreshold,
+                confirmCount,
+                isParametersFixed
+            };
+            const dataStr = JSON.stringify(dataToSave, null, 2);
+            
+            const zip = new JSZip();
+            zip.file("trading_data.json", dataStr);
+            
+            zip.generateAsync({ type: "blob" }).then(function (blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "trading_data.zip";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        function uploadData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                JSZip.loadAsync(e.target.result).then(function (zip) {
+                    zip.file("trading_data.json").async("string").then(function (data) {
+                        const loadedData = JSON.parse(data);
+                        tradeHistory.length = 0;
+                        tradeHistory.push(...(loadedData.tradeHistory || []));
+                        testTradeHistory.length = 0;
+                        testTradeHistory.push(...(loadedData.testTradeHistory || []));
+                        bookThreshold = loadedData.bookThreshold || 15;
+                        marketThreshold = loadedData.marketThreshold || 50;
+                        confirmCount = loadedData.confirmCount || 3;
+                        isParametersFixed = loadedData.isParametersFixed || false;
+                        aiBookThreshold = bookThreshold;
+                        aiMarketThreshold = marketThreshold;
+                        aiConfirmCount = confirmCount;
+                        updateStats();
+                        updateTestStats();
+                        updateTradeLog();
+                        updateDataSize();
+                        document.getElementById('aiCorrection').innerHTML = `Корректировка ИИ: Стакан: <span style="color:${isParametersFixed ? '#00FF00' : '#FFFFFF'}">${aiBookThreshold.toFixed(1)}%</span>, Рынок: <span style="color:${isParametersFixed ? '#00FF00' : '#FFFFFF'}">${aiMarketThreshold.toFixed(1)}%</span>, Подтверждений: <span style="color:${isParametersFixed ? '#00FF00' : '#FFFFFF'}">${aiConfirmCount}</span>`;
+                        document.getElementById('aiCorrection').style.color = isParametersFixed ? '#00FF00' : '#FFFFFF';
+                        alert("Данные успешно загружены!");
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(file);
         }
 
         setInterval(() => {
@@ -971,24 +1108,6 @@
             const bidDepth = aiAnalyst.orderBook.bids.reduce((sum, [price, vol]) => sum + parseFloat(price) * parseFloat(vol), 0) / aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0) || 0;
             const askDepth = aiAnalyst.orderBook.asks.reduce((sum, [price, vol]) => sum + parseFloat(price) * parseFloat(vol), 0) / aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0) || 0;
             const avgOrderBookPrice = (bidDepth + askDepth) / 2;
-            const bidVol = aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-            const askVol = aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
-            const totalBookVol = bidVol + askVol;
-            const rawBookDiff = totalBookVol > 0 ? ((bidVol - askVol) / totalBookVol) * 100 : 0;
-            bookDiffHistory.push(rawBookDiff);
-            if (bookDiffHistory.length > analysisSmoothingWindow) bookDiffHistory.shift();
-            const smoothedBookDiff = bookDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(bookDiffHistory.reduce((sum, val) => sum + val, 0) / bookDiffHistory.length, -100), 100) : 0;
-
-            const marketData = aiTrader.getMarketData();
-            const totalMarketVol = marketData.buyVol + marketData.sellVol;
-            const rawMarketDiff = totalMarketVol > 0 ? ((marketData.buyVol - marketData.sellVol) / totalMarketVol) * 100 : 0;
-            marketDiffHistory.push(rawMarketDiff);
-            if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
-            const smoothedMarketDiff = marketDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100) : 0;
-
-            const adjustedMood = (smoothedBookDiff * 0.6 + smoothedMarketDiff * 0.4);
-            const orderBookColor = adjustedMood >= 0 ? '#00FF00' : '#FF0000';
-
             const annotations = displayCandles.map((c, i) => ({
                 type: 'box',
                 xMin: c.x.getTime() - 1800000,
@@ -998,14 +1117,14 @@
                 backgroundColor: 'rgba(0, 0, 0, 0)',
                 borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
                 borderWidth: 2
-            })).concat(tradeAnnotations).concat([{
+            })).concat(tradeAnnotations).concat(testTradeAnnotations).concat([{
                 type: 'box',
                 xMin: displayCandles[displayCandles.length - 1].x.getTime() + 1800000,
                 xMax: displayCandles[displayCandles.length - 1].x.getTime() + 3600000,
                 yMin: avgOrderBookPrice - 0.001,
                 yMax: avgOrderBookPrice + 0.001,
-                backgroundColor: orderBookColor,
-                borderColor: orderBookColor,
+                backgroundColor: '#00FF00',
+                borderColor: '#00FF00',
                 borderWidth: 1
             }]);
             const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
@@ -1036,16 +1155,14 @@
             chart.update();
         }
 
-        // Функция для подсчета размера данных и уведомления
         function updateDataSize() {
             const dataToSave = {
+                tradeHistory,
+                testTradeHistory,
                 bookThreshold,
                 marketThreshold,
                 confirmCount,
-                tradeHistory,
-                thresholdHistory,
-                bookDiffHistory,
-                marketDiffHistory
+                isParametersFixed
             };
             const dataStr = JSON.stringify(dataToSave);
             const sizeInBytes = new TextEncoder().encode(dataStr).length;
@@ -1059,51 +1176,6 @@
             return sizeInBytes;
         }
 
-        // Функция для скачивания данных в ZIP (только сделки)
-        function downloadData() {
-            const dataToSave = {
-                tradeHistory
-            };
-            const dataStr = JSON.stringify(dataToSave, null, 2);
-            
-            const zip = new JSZip();
-            zip.file("trade_history.json", dataStr);
-            
-            zip.generateAsync({ type: "blob" }).then(function (blob) {
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement("a");
-                link.href = url;
-                link.download = "trade_history.zip";
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            });
-        }
-
-        // Функция для загрузки данных из ZIP (только сделки)
-        function uploadData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                JSZip.loadAsync(e.target.result).then(function (zip) {
-                    zip.file("trade_history.json").async("string").then(function (data) {
-                        const loadedData = JSON.parse(data);
-                        tradeHistory.length = 0;
-                        tradeHistory.push(...(loadedData.tradeHistory || []));
-                        updateStats();
-                        updateTradeLog();
-                        updateDataSize();
-                        alert("Данные успешно загружены!");
-                    });
-                });
-            };
-            reader.readAsArrayBuffer(file);
-        }
-
-        setInterval(updateDataSize, 60000);
         updateDataSize();
     </script>
 </body>
