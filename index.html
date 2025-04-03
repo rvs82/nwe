@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script async src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body { background-color: #000000; color: white; font-family: Arial, sans-serif; margin: 0; padding: 5px 20px 20px; font-weight: 400; line-height: 1.5; }
         canvas { max-width: 100%; }
@@ -17,7 +18,7 @@
         #tradeInfo { font-size: 14px; margin-top: 5px; }
         #aiSection, #tradeLog { max-height: 150px; overflow-y: auto; font-size: 14px; margin-top: 10px; padding: 10px; background-color: #1a1a1a; border: 1px solid #333; }
         #aiSection { max-height: 300px; }
-        #aiLog { max-height: 100px; overflow-y: auto; font-size: 12px; padding: 5px; background-color: #222; }
+        #aiLog { max-height:  booking: 5px; background-color: #222; }
         h2 { font-size: 18px; margin: 10px 0 5px; }
         #aiRecommendations { color: #cccccc; }
         select { margin: 0 5px; background-color: #222; color: white; border: 1px solid #333; }
@@ -88,6 +89,10 @@
         <h2>Лог ИИ</h2><div id="aiLog"></div>
     </div>
     <div id="tradeLog"><h2>Сделки</h2></div>
+    <button onclick="downloadData()">Скачать данные</button>
+    <div id="dataSize">Размер данных: 0 байт</div>
+    <input type="file" id="uploadData" accept=".zip" style="display: none;" onchange="uploadData(event)">
+    <button onclick="document.getElementById('uploadData').click()">Загрузить данные</button>
 
     <script>
         const h = 8;
@@ -391,6 +396,7 @@
                     this.checkCloseTrade(price);
                     this.updateTradeInfo();
                 }
+                updateDataSize(); // Обновляем размер данных после каждой проверки
             }
 
             openTrade(type, price, time, takeProfit) {
@@ -1020,6 +1026,91 @@
             chart.data.datasets[9].data = lastPriceData;
             chart.update();
         }
+
+        // Функция для подсчета размера данных и уведомления
+        function updateDataSize() {
+            const dataToSave = {
+                bookThreshold,
+                marketThreshold,
+                confirmCount,
+                tradeHistory: tradeHistory[timeframe],
+                thresholdHistory,
+                bookDiffHistory,
+                marketDiffHistory
+            };
+            const dataStr = JSON.stringify(dataToSave);
+            const sizeInBytes = new TextEncoder().encode(dataStr).length;
+            const sizeInMB = sizeInBytes / (1024 * 1024); // Перевод в МБ
+            document.getElementById('dataSize').textContent = `Размер данных: ${sizeInBytes} байт (${sizeInMB.toFixed(2)} МБ)`;
+            
+            // Порог для уведомления (10 МБ)
+            const thresholdMB = 10;
+            if (sizeInMB > thresholdMB) {
+                alert(`Размер данных превысил ${thresholdMB} МБ (${sizeInMB.toFixed(2)} МБ). Пора скачать данные!`);
+            }
+            return sizeInBytes;
+        }
+
+        // Функция для скачивания данных в ZIP
+        function downloadData() {
+            const dataToSave = {
+                bookThreshold,
+                marketThreshold,
+                confirmCount,
+                tradeHistory: tradeHistory[timeframe],
+                thresholdHistory,
+                bookDiffHistory,
+                marketDiffHistory
+            };
+            const dataStr = JSON.stringify(dataToSave, null, 2);
+            
+            // Создаем ZIP-архив
+            const zip = new JSZip();
+            zip.file("trading_data.json", dataStr);
+            
+            // Генерируем ZIP и скачиваем
+            zip.generateAsync({ type: "blob" }).then(function (blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "trading_data.zip";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        // Функция для загрузки данных из ZIP
+        function uploadData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                JSZip.loadAsync(e.target.result).then(function (zip) {
+                    zip.file("trading_data.json").async("string").then(function (data) {
+                        const loadedData = JSON.parse(data);
+                        bookThreshold = loadedData.bookThreshold || 5;
+                        marketThreshold = loadedData.marketThreshold || 20;
+                        confirmCount = loadedData.confirmCount || 3;
+                        tradeHistory[timeframe] = loadedData.tradeHistory || [];
+                        thresholdHistory = loadedData.thresholdHistory || [];
+                        bookDiffHistory = loadedData.bookDiffHistory || [];
+                        marketDiffHistory = loadedData.marketDiffHistory || [];
+                        updateStats();
+                        updateTradeLog();
+                        updateDataSize();
+                        alert("Данные успешно загружены!");
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Обновление размера данных каждые 60 секунд
+        setInterval(updateDataSize, 60000);
+        updateDataSize(); // Первоначальный вызов
     </script>
 </body>
 </html>
