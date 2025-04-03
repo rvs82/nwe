@@ -103,8 +103,8 @@
         let confirmCount = localStorage.getItem('confirmCount') ? parseInt(localStorage.getItem('confirmCount')) : 3;
         let longConfirm = 0;
         let shortConfirm = 0;
-        const smoothingWindow = 5; // Для сделок
-        const analysisSmoothingWindow = 10; // Для анализа ИИ и квадратика
+        const smoothingWindow = 5;
+        const analysisSmoothingWindow = 10;
         let aiBookThreshold = bookThreshold;
         let aiMarketThreshold = marketThreshold;
         let aiConfirmCount = confirmCount;
@@ -148,7 +148,6 @@
             }
         });
 
-        // Инициализация значений порогов и подтверждений
         document.getElementById('bookThresholdInput').value = '5';
         document.getElementById('marketThresholdInput').value = '20';
         document.getElementById('confirmCountInput').value = '3';
@@ -156,7 +155,6 @@
         document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
         document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
 
-        // Обработчики изменения порогов и подтверждений
         document.getElementById('bookThresholdInput').addEventListener('change', (e) => {
             if (e.target.value === 'auto') {
                 isAiBookAuto = true;
@@ -277,7 +275,7 @@
         const thresholdHistory = [];
         const bookDiffHistory = [];
         const marketDiffHistory = [];
-        let priceHistory = []; // Для анализа движения цены
+        let priceHistory = [];
 
         class TradingAI {
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
@@ -637,11 +635,10 @@
                         if (marketDiffHistory.length > analysisSmoothingWindow) marketDiffHistory.shift();
                         const smoothedMarketDiff = marketDiffHistory.length >= analysisSmoothingWindow ? Math.min(Math.max(marketDiffHistory.reduce((sum, val) => sum + val, 0) / marketDiffHistory.length, -100), 100) : 0;
 
-                        // Непрерывный анализ цены
                         if (lastPrice !== null && previousPrice !== null) {
                             const priceChange = lastPrice - previousPrice;
                             this.priceTrendHistory.push({ time: now, priceChange, bookDiff: smoothedBookDiff, marketDiff: smoothedMarketDiff });
-                            if (this.priceTrendHistory.length > 60) this.priceTrendHistory.shift(); // Храним 60 секунд истории
+                            if (this.priceTrendHistory.length > 60) this.priceTrendHistory.shift();
                         }
                         previousPrice = lastPrice;
 
@@ -701,46 +698,46 @@
 
                     adjustParameters() {
                         const now = Date.now();
-                        if (this.priceTrendHistory.length < 30) return; // Ждем минимум 30 секунд данных
+                        if (this.priceTrendHistory.length < 30) return;
 
-                        const recentTrends = this.priceTrendHistory.slice(-30); // Последние 30 секунд
+                        const recentTrends = this.priceTrendHistory.slice(-30);
                         const avgPriceChange = recentTrends.reduce((sum, t) => sum + t.priceChange, 0) / recentTrends.length;
                         const avgBookDiff = recentTrends.reduce((sum, t) => sum + t.bookDiff, 0) / recentTrends.length;
                         const avgMarketDiff = recentTrends.reduce((sum, t) => sum + t.marketDiff, 0) / recentTrends.length;
 
                         let success = false;
-                        const recentTrades = tradeHistory[timeframe].slice(-5); // Последние 5 сделок
+                        const recentTrades = tradeHistory[timeframe].slice(-5);
                         if (recentTrades.length > 0) {
                             const successfulTrades = recentTrades.filter(t => 
                                 (t.type === 'long' && t.profit > 0 && avgPriceChange > 0) || 
                                 (t.type === 'short' && t.profit > 0 && avgPriceChange < 0)
                             ).length;
-                            success = successfulTrades / recentTrades.length > 0.5; // Более 50% успешных
+                            success = successfulTrades / recentTrades.length > 0.5;
                         } else {
                             success = (avgPriceChange > 0 && avgBookDiff > bookThreshold && avgMarketDiff > marketThreshold) || 
                                      (avgPriceChange < 0 && avgBookDiff < -bookThreshold && avgMarketDiff < -marketThreshold);
                         }
 
                         if (success) {
-                            aiBookThreshold = Math.max(5, Math.min(25, aiBookThreshold + (Math.random() < 0.5 ? 1 : -1))); // Минимальная корректировка
-                            aiMarketThreshold = Math.max(10, Math.min(40, aiMarketThreshold + (Math.random() < 0.5 ? 1 : -1)));
+                            aiBookThreshold = Math.max(0, Math.min(100, aiBookThreshold + (Math.random() < 0.5 ? 0.5 : -0.5)));
+                            aiMarketThreshold = Math.max(0, Math.min(100, aiMarketThreshold + (Math.random() < 0.5 ? 0.5 : -0.5)));
                             aiConfirmCount = Math.max(1, Math.min(10, aiConfirmCount + (Math.random() < 0.5 ? 1 : -1)));
                         } else {
-                            aiBookThreshold = Math.max(5, Math.min(25, aiBookThreshold + (avgPriceChange > 0 ? 5 : -5))); // Значительная корректировка
-                            aiMarketThreshold = Math.max(10, Math.min(40, aiMarketThreshold + (avgPriceChange > 0 ? 5 : -5)));
-                            aiConfirmCount = Math.max(1, Math.min(10, aiConfirmCount + (avgPriceChange > 0 ? 2 : -2)));
+                            aiBookThreshold = Math.max(0, Math.min(100, Math.abs(avgBookDiff) * 0.8)); // Приближение к текущему bookDiff
+                            aiMarketThreshold = Math.max(0, Math.min(100, Math.abs(avgMarketDiff) * 0.8)); // Приближение к текущему marketDiff
+                            aiConfirmCount = Math.max(1, Math.min(10, aiConfirmCount + (avgPriceChange > 0 ? -1 : 1))); // Уменьшение при росте, увеличение при падении
                         }
 
                         if (isAiBookAuto) bookThreshold = aiBookThreshold;
                         if (isAiMarketAuto) marketThreshold = aiMarketThreshold;
                         if (isAiConfirmAuto) confirmCount = aiConfirmCount;
 
-                        document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold}%)`;
-                        document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold}%)`;
+                        document.getElementById('currentBookThreshold').textContent = `(Текущий: ${bookThreshold.toFixed(1)}%)`;
+                        document.getElementById('currentMarketThreshold').textContent = `(Текущий: ${marketThreshold.toFixed(1)}%)`;
                         document.getElementById('currentConfirmCount').textContent = `(Текущий: ${confirmCount})`;
 
                         const correctionColor = success ? '#00FF00' : '#FF0000';
-                        document.getElementById('aiCorrection').innerHTML = `Корректировка ИИ: Стакан: <span style="color:${correctionColor}">${aiBookThreshold}%</span>, Рынок: <span style="color:${correctionColor}">${aiMarketThreshold}%</span>, Подтверждений: <span style="color:${correctionColor}">${aiConfirmCount}</span>`;
+                        document.getElementById('aiCorrection').innerHTML = `Корректировка ИИ: Стакан: <span style="color:${correctionColor}">${aiBookThreshold.toFixed(1)}%</span>, Рынок: <span style="color:${correctionColor}">${aiMarketThreshold.toFixed(1)}%</span>, Подтверждений: <span style="color:${correctionColor}">${aiConfirmCount}</span>`;
                         this.lastCorrectionTime = now;
                     }
 
@@ -760,7 +757,7 @@
                         document.getElementById('aiRecommendations').innerHTML = this.provideRecommendations();
                         updateChart();
 
-                        if (now - this.lastCorrectionTime >= 30000) { // Каждые 30 секунд
+                        if (now - this.lastCorrectionTime >= 30000) {
                             this.adjustParameters();
                         }
                     }
@@ -772,7 +769,7 @@
                 fetchFearGreedIndex();
                 console.log('Backend:', tf.getBackend());
 
-                setInterval(() => aiAnalyst.adjustParameters(), 30000); // Корректировка каждые 30 секунд
+                setInterval(() => aiAnalyst.adjustParameters(), 30000);
             });
         }
 
