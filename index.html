@@ -251,7 +251,9 @@
         let dynamicSquareColor = '#00FF00';
         let lastLogMessage = '';
 
-        class TradingAI {            checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
+        class TradingAI {
+// Начало функции checkTradeConditions
+            checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
                 const ema100 = cachedEMA100 || calculateEMA(closePrices, 100);
                 const ema200 = cachedEMA200 || calculateEMA(closePrices, 200);
                 const bidVol = aiAnalyst.orderBook.bids.slice(0, 5).reduce((sum, [_, vol]) => sum + parseFloat(vol), 0);
@@ -321,7 +323,7 @@
 
                 this.updateForecast(bookDiffTrend, marketDiffTrend);
                 updateDataSize();
-            }
+            } // Конец checkTradeConditions
 
             updateSquareColor(bookDiff, marketDiff) {
                 const trendScore = (bookDiff + marketDiff) / 2;
