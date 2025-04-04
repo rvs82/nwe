@@ -1055,11 +1055,11 @@
             const avgOrderBookPrice = (bidDepth + askDepth) / 2;
             const annotations = displayCandles.map((c) => ({
                 type: 'box',
-                xMin: c.x.getTime() - 1799000, // Уменьшено для расстояния 1px между свечами
+                xMin: c.x.getTime() - 1799000,
                 xMax: c.x.getTime() + 1799000,
                 yMin: Math.min(c.o, c.c),
                 yMax: Math.max(c.o, c.c),
-                backgroundColor: 'rgba(0, 0, 0, 0)', // Пустотелые свечи
+                backgroundColor: 'rgba(0, 0, 0, 0)',
                 borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
                 borderWidth: 2
             })).concat(tradeAnnotations).concat(testTradeAnnotations).concat([{
