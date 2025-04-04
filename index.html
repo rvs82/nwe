@@ -12,7 +12,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body { background-color: #1a1a1a; color: #ffffff; font-family: Arial, sans-serif; margin: 0; padding: 5px 20px 20px; font-weight: 400; line-height: 1.5; }
-        canvas { max-width: 100%; height: 56.25vh; background-color: #000000; border: 1px solid #333; }
+        #chartContainer { height: 56.25vh; width: 100%; }
+        canvas { width: 100%; height: 100%; background-color: #000000; border: 1px solid #333; }
         #tradeAlert { display: none; background-color: #333; border: 2px solid #00ff00; padding: 10px; text-align: center; font-size: 16px; margin-bottom: 10px; }
         #infoBar { text-align: center; font-size: 16px; margin: 10px 0; }
         #tradeInfo { font-size: 14px; margin-top: 5px; }
@@ -39,7 +40,9 @@
 </head>
 <body>
     <div id="tradeAlert"></div>
-    <canvas id="priceChart"></canvas>
+    <div id="chartContainer">
+        <canvas id="priceChart"></canvas>
+    </div>
     <div id="infoBar">
         <div id="realStats">
             <span id="currentPrice">Текущая цена: N/A</span> | 
@@ -338,15 +341,15 @@
             updateSquareColor(bookDiff, marketDiff, bookDiffTrend, marketDiffTrend, emaTrend) {
                 const trendScore = (bookDiff + marketDiff + bookDiffTrend + marketDiffTrend) / 4;
                 if (trendScore > 25 && emaTrend === 'long') {
-                    dynamicSquareColor = '#00FF00'; // Зеленый - явный рост
+                    dynamicSquareColor = '#00FF00';
                 } else if (trendScore < -25 && emaTrend === 'short') {
-                    dynamicSquareColor = '#FF0000'; // Красный - явное падение
+                    dynamicSquareColor = '#FF0000';
                 } else if (trendScore > 0) {
-                    dynamicSquareColor = '#00CC00'; // Темно-зеленый - умеренный рост
+                    dynamicSquareColor = '#00CC00';
                 } else {
-                    dynamicSquareColor = '#CC0000'; // Темно-красный - умеренное падение
+                    dynamicSquareColor = '#CC0000';
                 }
-                const angle = (trendScore + 100) / 200 * 360 - 90; // От -90 до 270 градусов
+                const angle = (trendScore + 100) / 200 * 360 - 90;
                 document.getElementById('fearGreedArrow').style.transform = `rotate(${angle}deg) translateX(-50%)`;
             }
 
@@ -396,7 +399,7 @@
             }
 
             updateTestTakeProfit(time, lowerNarrow, upperNarrow) {
-                const tp = activeTestTrade.type === 'long' ? bvupperNarrow : lowerNarrow;
+                const tp = activeTestTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTestTrade.takeProfit = tp;
                 const tpAnnotation = testTradeAnnotations.find(a => a.id === 'testTpLine');
                 const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
@@ -411,7 +414,7 @@
 
             checkCloseTrade(price) {
                 const timeSinceOpen = (Date.now() - activeTrade.startTime) / (1000 * 60 * 60);
-                if (timeSinceOpen < 1) return; // Минимум 1 час удержания
+                if (timeSinceOpen < 1) return;
                 if (activeTrade.type === 'long' && price >= activeTrade.takeProfit) {
                     this.closeTrade(price);
                     this.updateAILog(`Лонг закрыт: Цена = ${price.toFixed(4)}, TP = ${activeTrade.takeProfit.toFixed(4)} достигнут`);
@@ -424,7 +427,7 @@
             checkLossOnOpenPrice(price) {
                 if (activeTrade) {
                     const timeSinceOpen = (Date.now() - activeTrade.startTime) / (1000 * 60 * 60);
-                    if (timeSinceOpen < 1) return; // Минимум 1 час удержания
+                    if (timeSinceOpen < 1) return;
                     if (activeTrade.type === 'long' && price <= activeTrade.openPrice) {
                         this.closeTradeInLoss(price);
                         this.updateAILog(`Лонг закрыт в убыток: Цена = ${price.toFixed(4)}, достигла уровня открытия ${activeTrade.openPrice.toFixed(4)}`);
@@ -437,7 +440,7 @@
 
             checkCloseTestTrade(price) {
                 const timeSinceOpen = (Date.now() - activeTestTrade.startTime) / (1000 * 60 * 60);
-                if (timeSinceOpen < 1) return; // Минимум 1 час удержания
+                if (timeSinceOpen < 1) return;
                 const bookDiffTrend = bookDiffHistory.length >= 5 ? ((bookDiffHistory[bookDiffHistory.length - 1] - bookDiffHistory[bookDiffHistory.length - 5]) / Math.abs(bookDiffHistory[bookDiffHistory.length - 5] || 1)) * 100 : 0;
                 const marketDiffTrend = marketDiffHistory.length >= 5 ? ((marketDiffHistory[marketDiffHistory.length - 1] - marketDiffHistory[marketDiffHistory.length - 5]) / Math.abs(marketDiffHistory[marketDiffHistory.length - 5] || 1)) * 100 : 0;
 
@@ -455,7 +458,7 @@
 
             checkTestStopLoss(price) {
                 const timeSinceOpen = (Date.now() - activeTestTrade.startTime) / (1000 * 60 * 60);
-                if (timeSinceOpen < 1) return; // Минимум 1 час удержания
+                if (timeSinceOpen < 1) return;
                 if (activeTestTrade) {
                     if (activeTestTrade.type === 'long' && price <= activeTestTrade.stopLoss) {
                         this.closeTestTrade(price);
@@ -568,7 +571,7 @@
             }
 
             updateAILog(message) {
-                if (message !== lastLogMessage && message.includes('открыт') || message.includes('закрыт') || message.includes('сделка')) {
+                if (message !== lastLogMessage && (message.includes('открыт') || message.includes('закрыт') || message.includes('сделка'))) {
                     const log = document.getElementById('aiLog');
                     const timestamp = new Date().toLocaleTimeString();
                     log.innerHTML = `<div>[${timestamp}] ${message}</div>` + log.innerHTML;
@@ -1071,13 +1074,13 @@
             const avgOrderBookPrice = (bidDepth + askDepth) / 2;
             const annotations = displayCandles.map((c, i) => ({
                 type: 'box',
-                xMin: c.x.getTime() - 1800000 + (i * 1), // 1px расстояние
+                xMin: c.x.getTime() - 1800000 + (i * 1),
                 xMax: c.x.getTime() + 1800000 + (i * 1),
                 yMin: Math.min(c.o, c.c),
                 yMax: Math.max(c.o, c.c),
-                backgroundColor: 'rgba(255, 235, 59, 0.8)', // Яркий желтый
+                backgroundColor: c.o <= c.c ? 'rgba(255, 235, 59, 0.9)' : 'rgba(255, 235, 59, 0.5)', // Ярче и четче
                 borderColor: '#ffeb3b',
-                borderWidth: 1
+                borderWidth: 1.5 // Четкие границы
             })).concat(tradeAnnotations).concat(testTradeAnnotations).concat([{
                 type: 'box',
                 xMin: displayCandles[displayCandles.length - 1].x.getTime() + 1800000,
