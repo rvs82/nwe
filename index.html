@@ -13,12 +13,12 @@
     <style>
         body { background-color: #1a1a1a; color: #ffffff; font-family: Arial, sans-serif; margin: 0; padding: 5px 20px 20px; font-weight: 400; line-height: 1.5; }
         #chart-container { width: 100%; height: 400px; position: relative; }
-        canvas { width: 100% !important; height: 100% !important; background-color: #252525; border: 1px solid #333; }
+        canvas { width: 100% !important; height: 100% !important; background-color: #000000; border: 1px solid #333; }
         #tradeAlert { display: none; background-color: #333; border: 2px solid #00ff00; padding: 10px; text-align: center; font-size: 16px; margin-bottom: 10px; }
         #infoBar { text-align: center; font-size: 16px; margin: 10px 0; }
         #tradeInfo { font-size: 14px; margin-top: 5px; }
         #aiSection { max-height: 300px; margin-top: 10px; padding: 10px; background-color: #1a1a1a; border: 1px solid #333; }
-        #aiMarketAnalysis { font-size: 14px; white-space: nowrap; overflow-x: auto; }
+        #aiMarketAnalysis { font-size: 14px; white-space: normal; overflow-x: hidden; }
         #aiLog { max-height: 100px; overflow-y: auto; font-size: 12px; padding: 5px; background-color: #222; margin-top: 10px; }
         #tradeLog { max-height: 150px; overflow-y: auto; font-size: 14px; margin-top: 10px; padding: 10px; background-color: #1a1a1a; border: 1px solid #333; }
         h2 { font-size: 18px; margin: 10px 0 5px; }
@@ -98,8 +98,8 @@
             type: 'line',
             data: {
                 datasets: [
-                    { label: 'Upper Wick', data: [], borderColor: '#ffeb3b', borderWidth: 1, pointRadius: 0, fill: false },
-                    { label: 'Lower Wick', data: [], borderColor: '#ffeb3b', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Upper Wick', data: [], borderColor: '#ff9800', borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'Lower Wick', data: [], borderColor: '#90bff9', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Upper Envelope Wide', data: [], borderColor: '#4caf50', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Lower Envelope Wide', data: [], borderColor: '#4caf50', borderWidth: 1, pointRadius: 0, fill: false },
                     { label: 'Middle Envelope', data: [], borderColor: '#808080', borderWidth: 1, pointRadius: 0, fill: false },
@@ -177,6 +177,7 @@
                         bottom: 20 
                     } 
                 },
+                backgroundColor: '#000000',
                 animation: { duration: 100 }
             }
         });
@@ -1025,7 +1026,7 @@
             const upperWicks = [];
             const lowerWicks = [];
             displayCandles.forEach(c => {
-                const wickColor = '#ffeb3b';
+                const wickColor = c.o <= c.c ? '#ff9800' : '#90bff9';
                 if (c.h > Math.max(c.o, c.c)) {
                     upperWicks.push({ x: c.x, y: c.h });
                     upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
@@ -1054,13 +1055,13 @@
             const avgOrderBookPrice = (bidDepth + askDepth) / 2;
             const annotations = displayCandles.map((c) => ({
                 type: 'box',
-                xMin: c.x.getTime() - 1800000,
-                xMax: c.x.getTime() + 1800000,
+                xMin: c.x.getTime() - 1799000, // Уменьшено для расстояния 1px между свечами
+                xMax: c.x.getTime() + 1799000,
                 yMin: Math.min(c.o, c.c),
                 yMax: Math.max(c.o, c.c),
-                backgroundColor: 'rgba(255, 235, 59, 0.8)',
-                borderColor: '#ffeb3b',
-                borderWidth: 1
+                backgroundColor: 'rgba(0, 0, 0, 0)', // Пустотелые свечи
+                borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
+                borderWidth: 2
             })).concat(tradeAnnotations).concat(testTradeAnnotations).concat([{
                 type: 'box',
                 xMin: displayCandles[displayCandles.length - 1].x.getTime() + 1800000,
@@ -1070,12 +1071,12 @@
                 backgroundColor: dynamicSquareColor,
                 borderColor: dynamicSquareColor,
                 borderWidth: 1
-            }]);
+            }]));
             const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
             const offsetTime = lastCandleTime + 3600000;
             const lastPriceData = lastPrice && lastPriceTime ? [{ x: displayCandles[0].x, y: lastPrice }, { x: new Date(lastCandleTime), y: lastPrice }] : [];
-            chart.data.datasets[0].borderColor = '#ffeb3b';
-            chart.data.datasets[1].borderColor = '#ffeb3b';
+            chart.data.datasets[0].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
+            chart.data.datasets[1].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
             if (lastPrice && lastPriceTime) {
                 const lastLowerWide = lower[lower.length - 1]?.y || 0;
                 const lastUpperWide = upper[upper.length - 1]?.y || 0;
