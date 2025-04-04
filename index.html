@@ -180,11 +180,11 @@
                 backgroundColor: '#000000',
                 animation: { duration: 100 }
             }
-        }); // Закрытие инициализации chart
+        });
 
         function gauss(x, h) {
             return Math.exp(-(Math.pow(x, 2) / (h * h * 2)));
-        } // Закрытие gauss
+        }
 
         function calculateNWE(prices, multiplier) {
             const nwe = [];
@@ -203,7 +203,7 @@
             }
             sae = (sae / Math.min(499, n - 1)) * multiplier;
             return { nwe, sae };
-        } // Закрытие calculateNWE
+        }
 
         function calculateEMA(prices, period) {
             if (prices.length === 0) return [];
@@ -223,7 +223,7 @@
                 ema[i] = sma;
             }
             return ema;
-        } // Закрытие calculateEMA
+        }
 
         const candles = [];
         const closePrices = [];
@@ -322,12 +322,12 @@
 
                 this.updateForecast(bookDiffTrend, marketDiffTrend);
                 updateDataSize();
-            } // Закрытие checkTradeConditions
+            }
 
             updateSquareColor(bookDiff, marketDiff) {
                 const trendScore = (bookDiff + marketDiff) / 2;
                 dynamicSquareColor = trendScore >= 0 ? '#00FF00' : '#FF0000';
-            } // Закрытие updateSquareColor
+            }
 
             openTrade(type, price, time, takeProfit) {
                 activeTrade = { type, openPrice: price, openTime: time, takeProfit, size: tradeSize, startTime: Date.now() };
@@ -339,7 +339,7 @@
                 updateStats();
                 updateTradeLog();
                 if (document.getElementById('muteSound').checked) openSound.play();
-            } // Закрытие openTrade
+            }
 
             openTestTrade(type, price, time, takeProfit) {
                 const priceRange = priceHistory.length >= 5 ? Math.max(...priceHistory.slice(-5)) - Math.min(...priceHistory.slice(-5)) : price * 0.02;
@@ -358,7 +358,7 @@
                 updateTestStats();
                 updateTradeLog();
                 if (document.getElementById('muteSound').checked) testOpenSound.play();
-            } // Закрытие openTestTrade            updateTakeProfit(time, lowerNarrow, upperNarrow) {
+            }            updateTakeProfit(time, lowerNarrow, upperNarrow) {
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
@@ -370,7 +370,7 @@
                     tpAnnotation.yMin = tp;
                     tpAnnotation.yMax = tp;
                 }
-            } // Закрытие updateTakeProfit
+            }
 
             updateTestTakeProfit(time, lowerNarrow, upperNarrow) {
                 const tp = activeTestTrade.type === 'long' ? upperNarrow : lowerNarrow;
@@ -384,7 +384,7 @@
                     tpAnnotation.yMin = tp;
                     tpAnnotation.yMax = tp;
                 }
-            } // Закрытие updateTestTakeProfit
+            }
 
             checkCloseTrade(price) {
                 const timeSinceOpen = (Date.now() - activeTrade.startTime) / (1000 * 60 * 60);
@@ -396,7 +396,7 @@
                     this.closeTrade(price);
                     this.updateAILog(`Шорт закрыт: Цена = ${price.toFixed(4)}, TP = ${activeTrade.takeProfit.toFixed(4)} достигнут`);
                 }
-            } // Закрытие checkCloseTrade
+            }
 
             checkLossOnOpenPrice(price) {
                 if (activeTrade) {
@@ -410,7 +410,7 @@
                         this.updateAILog(`Шорт закрыт в убыток: Цена = ${price.toFixed(4)}, достигла уровня открытия ${activeTrade.openPrice.toFixed(4)}`);
                     }
                 }
-            } // Закрытие checkLossOnOpenPrice
+            }
 
             checkCloseTestTrade(price) {
                 const timeSinceOpen = (Date.now() - activeTestTrade.startTime) / (1000 * 60 * 60);
@@ -428,7 +428,7 @@
                     this.closeTestTrade(price);
                     this.updateAILog(`Тестовая сделка закрыта: Цена = ${price.toFixed(4)}, время или разворот`);
                 }
-            } // Закрытие checkCloseTestTrade
+            }
 
             checkTestStopLoss(price) {
                 const timeSinceOpen = (Date.now() - activeTestTrade.startTime) / (1000 * 60 * 60);
@@ -442,7 +442,7 @@
                         this.updateAILog(`Тестовый шорт закрыт по стоп-лоссу: Цена = ${price.toFixed(4)}, Стоп = ${activeTestTrade.stopLoss.toFixed(4)}`);
                     }
                 }
-            } // Закрытие checkTestStopLoss
+            }
 
             closeTrade(price) {
                 const positionSize = tradeSize / activeTrade.openPrice;
@@ -464,7 +464,7 @@
                 updateTradeLog();
                 aiAnalyst.trainAndUpdate();
                 if (document.getElementById('muteSound').checked) closeSound.play();
-            } // Закрытие closeTrade
+            }
 
             closeTradeInLoss(price) {
                 const positionSize = tradeSize / activeTrade.openPrice;
@@ -486,7 +486,7 @@
                 updateTradeLog();
                 aiAnalyst.trainAndUpdate();
                 if (document.getElementById('muteSound').checked) closeSound.play();
-            } // Закрытие closeTradeInLoss
+            }
 
             closeTestTrade(price) {
                 const positionSize = tradeSize / activeTestTrade.openPrice;
@@ -507,7 +507,7 @@
                 updateTestStats();
                 updateTradeLog();
                 if (document.getElementById('muteSound').checked) testCloseSound.play();
-            } // Закрытие closeTestTrade
+            }
 
             updateTradeInfo() {
                 const tradeInfoElement = document.getElementById('tradeInfo');
@@ -521,7 +521,7 @@
                 } else {
                     tradeInfoElement.textContent = '';
                 }
-            } // Закрытие updateTradeInfo
+            }
 
             updateTestTradeInfo() {
                 if (activeTestTrade) {
@@ -532,7 +532,7 @@
                 } else {
                     document.getElementById('testStatsText').textContent = `Тестовые: Открыто: 0 | Сделок: ${testTradeHistory.length} | Прибыль: ${testTradeHistory.reduce((sum, t) => sum + (t.profit || 0), 0).toFixed(2)} USDT | Убыток: ${testTradeHistory.reduce((sum, t) => sum + (t.loss || 0), 0).toFixed(2)} USDT`;
                 }
-            } // Закрытие updateTestTradeInfo
+            }
 
             getMarketData() {
                 const now = Date.now();
@@ -542,7 +542,7 @@
                 const totalVol = buyVol + sellVol;
                 const diff = totalVol > 0 ? ((buyVol - sellVol) / totalVol) * 100 : 0;
                 return { buyVol, sellVol, diff };
-            } // Закрытие getMarketData
+            }
 
             updateAILog(message) {
                 if (message !== lastLogMessage && (message.includes('открыт') || message.includes('закрыт') || message.includes('сделка'))) {
@@ -556,7 +556,7 @@
                     log.scrollTop = 0;
                     lastLogMessage = message;
                 }
-            } // Закрытие updateAILog
+            }
 
             updateForecast(bookDiffTrend, marketDiffTrend) {
                 if (bookDiffTrend > 50 && marketDiffTrend > 100) {
@@ -576,8 +576,8 @@
                     lastForecast = null;
                     lastForecastTime = null;
                 }
-            } // Закрытие updateForecast
-        } // Закрытие класса TradingAI
+            }
+        }
 
         let aiTrader, aiAnalyst;
         function initAI() {
@@ -822,7 +822,7 @@
                         document.getElementById('aiRecommendations').innerHTML = `<h2>Рекомендации</h2>${this.provideRecommendations()}`;
                         updateChart();
                     }
-                } // Закрытие класса MarketAI
+                }
 
                 aiTrader = new TradingAI();
                 aiAnalyst = new MarketAI();
@@ -831,8 +831,8 @@
                 console.log('Backend:', tf.getBackend());
 
                 setInterval(() => aiAnalyst.adjustParameters(), 300000);
-            }); // Закрытие tf.setBackend.then
-        } // Закрытие initAI
+            });
+        }
 
         function updateStats() {
             const totalProfit = tradeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
@@ -847,7 +847,7 @@
             document.getElementById('stats').innerHTML = activeTrade ? 
                 `Открыто: <span class="${activeTrade.type}">${activeTrade.type.toUpperCase()}</span> | Сделок: ${totalTrades} (всего) / <span style="color: #00FF00">${profitableTrades}</span> (прибыльных) / <span style="color: #FF0000">${losingTrades}</span> (убыточных) | Прибыль: ${(totalProfit + totalProfitTest).toFixed(2)} USDT | Убыток: ${(totalLoss + totalLossTest).toFixed(2)} USDT` : 
                 `Открыто: 0 | Сделок: ${totalTrades} (всего) / <span style="color: #00FF00">${profitableTrades}</span> (прибыльных) / <span style="color: #FF0000">${losingTrades}</span> (убыточных) | Прибыль: ${(totalProfit + totalProfitTest).toFixed(2)} USDT | Убыток: ${(totalLoss + totalLossTest).toFixed(2)} USDT`;
-        } // Закрытие updateStats
+        }
 
         function updateTestStats() {
             const totalProfit = testTradeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
@@ -861,7 +861,7 @@
             } else {
                 document.getElementById('testStatsText').textContent = `Тестовые: Открыто: 0 | Сделок: ${totalTrades} | Прибыль: ${totalProfit.toFixed(2)} USDT | Убыток: ${totalLoss.toFixed(2)} USDT`;
             }
-        } // Закрытие updateTestStats
+        }
 
         function updateTradeLog() {
             const log = document.getElementById('tradeLog');
@@ -874,7 +874,7 @@
                 return `${isTest ? 'Тест ' : ''}${trade.type.toUpperCase()} | Вход: ${trade.openPrice.toFixed(4)} (${openTime}) | Закрытие: ${trade.closePrice.toFixed(4)} (${closeTime}) | ${profitOrLoss}`;
             }).join('<br>');
             log.scrollTop = 0;
-        } // Закрытие updateTradeLog
+        }
 
         let wsKline = new WebSocket(`wss://stream.binance.com:9443/ws/ldousdt@kline_1h`);
         const wsTrade = new WebSocket('wss://stream.binance.com:9443/ws/ldousdt@aggTrade');
@@ -933,7 +933,7 @@
                 console.error("Error fetching Fear & Greed Index:", error);
             }
             setTimeout(fetchFearGreedIndex, 3600000);
-        } // Закрытие fetchFearGreedIndex
+        }
 
         async function fetchInitialCandles() {
             try {
@@ -960,7 +960,7 @@
             } catch (error) {
                 console.error("Error fetching initial candles:", error);
             }
-        } // Закрытие fetchInitialCandles
+        }
 
         function downloadData() {
             const dataToSave = {
@@ -986,7 +986,7 @@
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
             });
-        } // Закрытие downloadData
+        }
 
         function uploadData(event) {
             const file = event.target.files[0];
@@ -1017,7 +1017,7 @@
                 });
             };
             reader.readAsArrayBuffer(file);
-        } // Закрытие uploadData
+        }
 
         function updateChart() {
             const displayCandles = candles.slice(-maxCandles);
@@ -1097,7 +1097,7 @@
             chart.data.datasets[8].data = ema200Data;
             chart.data.datasets[9].data = lastPriceData;
             chart.update();
-        } // Закрытие updateChart
+        }
 
         setInterval(() => {
             if (chartBuffer.length > 0) {
@@ -1122,7 +1122,7 @@
             }
             aiAnalyst.trainAndUpdate();
             updateDataSize();
-        }, 1000); // Закрытие setInterval
+        }, 1000);
 
         function updateDataSize() {
             const dataToSave = {
@@ -1143,7 +1143,7 @@
                 alert(`Размер данных превысил ${thresholdMB} МБ (${sizeInMB.toFixed(2)} МБ). Пора скачать данные!`);
             }
             return sizeInBytes;
-        } // Закрытие updateDataSize
+        }
 
         initAI();
         updateDataSize();
