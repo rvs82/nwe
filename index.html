@@ -377,27 +377,6 @@
                     this.updateTradeInfo();
                 }
 
-                if (!activeTestTrade && price && time) {
-                    const emaTrend = ema100[ema100.length - 1] > ema200[ema200.length - 1] ? 'long' : 'short';
-                    const avgVolume = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
-                    const currentVolume = volumes[volumes.length - 1] || 0;
-                    const bookDiffTrend = bookDiffHistory.length >= 5 ? ((bookDiffHistory[bookDiffHistory.length - 1] - bookDiffHistory[bookDiffHistory.length - 5]) / Math.abs(bookDiffHistory[bookDiffHistory.length - 5] || 1)) * 100 : 0;
-                    const marketDiffTrend = marketDiffHistory.length >= 5 ? ((marketDiffHistory[marketDiffHistory.length - 1] - marketDiffHistory[marketDiffHistory.length - 5]) / Math.abs(marketDiffHistory[marketDiffHistory.length - 5] || 1)) * 100 : 0;
-
-                    if (emaTrend === 'long' && bookDiff >= bookThreshold && marketDiff >= marketThreshold && bookDiffTrend > 50 && marketDiffTrend > 100 && currentVolume > avgVolume * 1.2) {
-                        this.openTestTrade('long', price, time, upperNarrow);
-                        this.updateAILog(`Тестовый лонг открыт: Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%`);
-                    } else if (emaTrend === 'short' && bookDiff <= -bookThreshold && marketDiff <= -marketThreshold && bookDiffTrend < -50 && marketDiffTrend < -100 && currentVolume > avgVolume * 1.2) {
-                        this.openTestTrade('short', time, lowerNarrow);
-                        this.updateAILog(`Тестовый шорт открыт: Цена = ${price.toFixed(4)}, Стакан: ${bookDiff.toFixed(1)}%, Рынок: ${marketDiff.toFixed(1)}%`);
-                    }
-                } else if (activeTestTrade) {
-                    this.updateTestTakeProfit(time, lowerNarrow, upperNarrow);
-                    this.checkCloseTestTrade(price);
-                    this.checkTestStopLoss(price);
-                    this.updateTestTradeInfo();
-                }
-
                 updateDataSize();
             }
 
@@ -418,43 +397,10 @@
                 if (document.getElementById('muteSound').checked) openSound.play();
             }
 
-            openTestTrade(type, price, time, takeProfit) {
-                const priceRange = priceHistory.length >= 5 ? Math.max(...priceHistory.slice(-5)) - Math.min(...priceHistory.slice(-5)) : price * 0.02;
-                const profitDistance = Math.abs(takeProfit - price);
-                const riskRewardRatio = 2;
-                const stopLossDistance = profitDistance / riskRewardRatio;
-                const stopLoss = type === 'long' ? price - stopLossDistance : price + stopLossDistance;
-
-                activeTestTrade = { type, openPrice: price, openTime: time, takeProfit, stopLoss, size: tradeSize, startTime: Date.now(), riskRewardRatio };
-                const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
-                const maxTime = candles[candles.length - 1]?.x.getTime() + 60*60*1000 || time.getTime() + 60*60*1000;
-                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: price, yMax: price, borderColor: '#00BFFF', borderWidth: 2, id: 'testOpenLine', borderDash: [5, 5] });
-                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: takeProfit, yMax: takeProfit, borderColor: '#00BFFF', borderWidth: 2, id: 'testTpLine', borderDash: [5, 5] });
-                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: stopLoss, yMax: stopLoss, borderColor: '#FF4040', borderWidth: 2, id: 'testSlLine', borderDash: [5, 5] });
-                this.updateTestTradeInfo();
-                updateStats();
-                updateTradeLog();
-                if (document.getElementById('muteSound').checked) testOpenSound.play();
-            }
-
             updateTakeProfit(time, lowerNarrow, upperNarrow) {
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
-                const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
-                const maxTime = candles[candles.length - 1]?.x.getTime() + 60*60*1000 || time.getTime() + 60*60*1000;
-                if (tpAnnotation) {
-                    tpAnnotation.xMin = minTime;
-                    tpAnnotation.xMax = maxTime;
-                    tpAnnotation.yMin = tp;
-                    tpAnnotation.yMax = tp;
-                }
-            }
-
-            updateTestTakeProfit(time, lowerNarrow, upperNarrow) {
-                const tp = activeTestTrade.type === 'long' ? upperNarrow : lowerNarrow;
-                activeTestTrade.takeProfit = tp;
-                const tpAnnotation = testTradeAnnotations.find(a => a.id === 'testTpLine');
                 const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
                 const maxTime = candles[candles.length - 1]?.x.getTime() + 60*60*1000 || time.getTime() + 60*60*1000;
                 if (tpAnnotation) {
@@ -475,24 +421,6 @@
                 }
             }
 
-            checkCloseTestTrade(price) {
-                const timeSinceOpen = (Date.now() - activeTestTrade.startTime) / (1000 * 60 * 60);
-                if (timeSinceOpen < 1) return;
-                const bookDiffTrend = bookDiffHistory.length >= 5 ? ((bookDiffHistory[bookDiffHistory.length - 1] - bookDiffHistory[bookDiffHistory.length - 5]) / Math.abs(bookDiffHistory[bookDiffHistory.length - 5] || 1)) * 100 : 0;
-                const marketDiffTrend = marketDiffHistory.length >= 5 ? ((marketDiffHistory[marketDiffHistory.length - 1] - marketDiffHistory[marketDiffHistory.length - 5]) / Math.abs(marketDiffHistory[marketDiffHistory.length - 5] || 1)) * 100 : 0;
-
-                if (activeTestTrade.type === 'long' && price >= activeTestTrade.takeProfit) {
-                    this.closeTestTrade(price);
-                    this.updateAILog(`Тестовый лонг закрыт: Цена = ${price.toFixed(4)}, TP = ${activeTestTrade.takeProfit.toFixed(4)} достигнут`);
-                } else if (activeTestTrade.type === 'short' && price <= activeTestTrade.takeProfit) {
-                    this.closeTestTrade(price);
-                    this.updateAILog(`Тестовый шорт закрыт: Цена = ${price.toFixed(4)}, TP = ${activeTestTrade.takeProfit.toFixed(4)} достигнут`);
-                } else if (timeSinceOpen >= 3 || (activeTestTrade.type === 'long' && (bookDiffTrend < -50 || marketDiffTrend < -100)) || (activeTestTrade.type === 'short' && (bookDiffTrend > 50 || marketDiffTrend > 100))) {
-                    this.closeTestTrade(price);
-                    this.updateAILog(`Тестовая сделка закрыта: Цена = ${price.toFixed(4)}, время или разворот`);
-                }
-            }
-
             checkLossOnOpenPrice(price) {
                 if (activeTrade) {
                     if (activeTrade.type === 'long' && price <= activeTrade.openPrice) {
@@ -501,20 +429,6 @@
                     } else if (activeTrade.type === 'short' && price >= activeTrade.openPrice) {
                         this.closeTradeInLoss(price);
                         this.updateAILog(`Шорт закрыт в убыток: Цена = ${price.toFixed(4)}, достигла уровня открытия ${activeTrade.openPrice.toFixed(4)}`);
-                    }
-                }
-            }
-
-            checkTestStopLoss(price) {
-                const timeSinceOpen = (Date.now() - activeTestTrade.startTime) / (1000 * 60 * 60);
-                if (timeSinceOpen < 1) return;
-                if (activeTestTrade) {
-                    if (activeTestTrade.type === 'long' && price <= activeTestTrade.stopLoss) {
-                        this.closeTestTrade(price);
-                        this.updateAILog(`Тестовый лонг закрыт по стоп-лоссу: Цена = ${price.toFixed(4)}, Стоп = ${activeTestTrade.stopLoss.toFixed(4)}`);
-                    } else if (activeTestTrade.type === 'short' && price >= activeTestTrade.stopLoss) {
-                        this.closeTestTrade(price);
-                        this.updateAILog(`Тестовый шорт закрыт по стоп-лоссу: Цена = ${price.toFixed(4)}, Стоп = ${activeTestTrade.stopLoss.toFixed(4)}`);
                     }
                 }
             }
@@ -563,27 +477,6 @@
                 if (document.getElementById('muteSound').checked) closeSound.play();
             }
 
-            closeTestTrade(price) {
-                const positionSize = tradeSize / activeTestTrade.openPrice;
-                const rawProfit = activeTestTrade.type === 'long' ? (price - activeTestTrade.openPrice) * positionSize : (activeTestTrade.openPrice - price) * positionSize;
-                const commission = (tradeSize + (tradeSize + rawProfit)) * commissionRate;
-                const profit = rawProfit - commission;
-                
-                testTradeHistory.push({ type: activeTestTrade.type, openPrice: activeTestTrade.openPrice, closePrice: price, openTime: activeTestTrade.openTime, closeTime: lastPriceTime, profit: profit > 0 ? profit : 0, loss: profit < 0 ? profit : 0 });
-                const closeTime = lastPriceTime;
-                const tradeColor = activeTestTrade.type === 'long' ? '#00ff00' : '#ff0000';
-                testTradeAnnotations.push({ type: 'point', xValue: activeTestTrade.openTime, yValue: activeTestTrade.openPrice, backgroundColor: tradeColor, borderColor: tradeColor, radius: 4 });
-                testTradeAnnotations.push({ type: 'point', xValue: closeTime, yValue: price, backgroundColor: tradeColor, borderColor: tradeColor, radius: 4 });
-                chart.data.datasets[11].data.push({ x: activeTestTrade.openTime, y: activeTestTrade.openPrice }, { x: closeTime, y: price }, { x: null, y: null });
-                testTradeAnnotations.splice(testTradeAnnotations.findIndex(a => a.id === 'testOpenLine'), 1);
-                testTradeAnnotations.splice(testTradeAnnotations.findIndex(a => a.id === 'testTpLine'), 1);
-                testTradeAnnotations.splice(testTradeAnnotations.findIndex(a => a.id === 'testSlLine'), 1);
-                activeTestTrade = null;
-                updateStats();
-                updateTradeLog();
-                if (document.getElementById('muteSound').checked) testCloseSound.play();
-            }
-
             updateTradeInfo() {
                 const tradeInfoElement = document.getElementById('tradeInfo');
                 if (activeTrade) {
@@ -595,18 +488,6 @@
                     tradeInfoElement.textContent = `${activeTrade.type.toUpperCase()} | Вход: ${activeTrade.openPrice.toFixed(4)} | TP: ${activeTrade.takeProfit.toFixed(4)} | Время: ${timeStr}`;
                 } else {
                     tradeInfoElement.textContent = '';
-                }
-            }
-
-            updateTestTradeInfo() {
-                const tradeInfoElement = document.getElementById('tradeInfo');
-                if (activeTestTrade) {
-                    const elapsed = Math.floor((Date.now() - activeTestTrade.startTime) / 1000);
-                    const days = Math.floor(elapsed / (24 * 3600));
-                    const hours = Math.floor((elapsed % (24 * 3600)) / 3600);
-                    const minutes = Math.floor((elapsed % 3600) / 60);
-                    const timeStr = `${days > 0 ? days + 'д ' : ''}${hours}ч ${minutes}м`;
-                    tradeInfoElement.textContent = `ТЕСТ ${activeTestTrade.type.toUpperCase()} | Вход: ${activeTestTrade.openPrice.toFixed(4)} | TP: ${activeTestTrade.takeProfit.toFixed(4)} | Время: ${timeStr}`;
                 }
             }
 
@@ -917,24 +798,21 @@
         function updateStats() {
             const totalProfit = tradeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
             const totalLoss = tradeHistory.reduce((sum, trade) => sum + (trade.loss || 0), 0);
-            const totalProfitTest = testTradeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
-            const totalLossTest = testTradeHistory.reduce((sum, trade) => sum + (trade.loss || 0), 0);
             const openTrades = activeTrade ? 1 : 0;
-            const totalTrades = tradeHistory.length + testTradeHistory.length;
-            const profitableTrades = tradeHistory.filter(trade => (trade.profit || 0) > 0).length + testTradeHistory.filter(trade => (trade.profit || 0) > 0).length;
-            const losingTrades = tradeHistory.filter(trade => (trade.loss || 0) < 0).length + testTradeHistory.filter(trade => (trade.loss || 0) < 0).length;
-            document.getElementById('stats').textContent = `Открыто: ${openTrades} | Сделок: ${totalTrades} (всего) / <span style="color: #00FF00">${profitableTrades}</span> (прибыльных) / <span style="color: #FF0000">${losingTrades}</span> (убыточных) | Прибыль: ${(totalProfit + totalProfitTest).toFixed(2)} USDT | Убыток: ${(totalLoss + totalLossTest).toFixed(2)} USDT`;
+            const totalTrades = tradeHistory.length;
+            const profitableTrades = tradeHistory.filter(trade => (trade.profit || 0) > 0).length;
+            const losingTrades = tradeHistory.filter(trade => (trade.loss || 0) < 0).length;
+            document.getElementById('stats').textContent = `Открыто: ${openTrades} | Сделок: ${totalTrades} (всего) / <span style="color: #00FF00">${profitableTrades}</span> (прибыльных) / <span style="color: #FF0000">${losingTrades}</span> (убыточных) | Прибыль: ${totalProfit.toFixed(2)} USDT | Убыток: ${totalLoss.toFixed(2)} USDT`;
         }
 
         function updateTradeLog() {
             const log = document.getElementById('tradeLog');
-            const lastTrades = [...tradeHistory, ...testTradeHistory].slice(-30).reverse();
+            const lastTrades = tradeHistory.slice(-30).reverse();
             log.innerHTML = `<h2>Сделки</h2>` + lastTrades.map(trade => {
-                const isTest = testTradeHistory.includes(trade);
                 const openTime = new Date(trade.openTime).toLocaleTimeString();
                 const closeTime = new Date(trade.closeTime).toLocaleTimeString();
                 const profitOrLoss = trade.profit > 0 ? `Прибыль: ${trade.profit.toFixed(2)} USDT` : `Убыток: ${(trade.loss || 0).toFixed(2)} USDT`;
-                return `${isTest ? 'Тест ' : ''}${trade.type.toUpperCase()} | Открытие: ${trade.openPrice.toFixed(4)} (${openTime}) | Закрытие: ${trade.closePrice.toFixed(4)} (${closeTime}) | ${profitOrLoss}`;
+                return `${trade.type.toUpperCase()} | Открытие: ${trade.openPrice.toFixed(4)} (${openTime}) | Закрытие: ${trade.closePrice.toFixed(4)} (${closeTime}) | ${profitOrLoss}`;
             }).join('<br>');
             log.scrollTop = 0;
         }
@@ -1108,7 +986,7 @@
                 backgroundColor: 'rgba(0, 0, 0, 0)',
                 borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
                 borderWidth: 2
-            })).concat(tradeAnnotations).concat(testTradeAnnotations).concat([{
+            })).concat(tradeAnnotations).concat([{
                 type: 'box',
                 xMin: displayCandles[displayCandles.length - 1].x.getTime() + 1800000,
                 xMax: displayCandles[displayCandles.length - 1].x.getTime() + 3600000,
@@ -1143,8 +1021,6 @@
             chart.data.datasets[7].data = ema100Data;
             chart.data.datasets[8].data = ema200Data;
             chart.data.datasets[9].data = lastPriceData;
-            chart.data.datasets[10].data = tradeAnnotations.filter(a => a.type === 'point').map(a => ({ x: a.xValue, y: a.yValue }));
-            chart.data.datasets[11].data = testTradeAnnotations.filter(a => a.type === 'point').map(a => ({ x: a.xValue, y: a.yValue }));
             chart.update();
         }
 
@@ -1155,7 +1031,6 @@
                 marketThreshold,
                 confirmCount,
                 tradeHistory,
-                testTradeHistory,
                 thresholdHistory,
                 bookDiffHistory,
                 marketDiffHistory
@@ -1175,8 +1050,7 @@
         // Функция для скачивания данных в ZIP (только сделки)
         function downloadData() {
             const dataToSave = {
-                tradeHistory,
-                testTradeHistory
+                tradeHistory
             };
             const dataStr = JSON.stringify(dataToSave, null, 2);
             
@@ -1207,8 +1081,6 @@
                         const loadedData = JSON.parse(data);
                         tradeHistory.length = 0;
                         tradeHistory.push(...(loadedData.tradeHistory || []));
-                        testTradeHistory.length = 0;
-                        testTradeHistory.push(...(loadedData.testTradeHistory || []));
                         updateStats();
                         updateTradeLog();
                         updateDataSize();
