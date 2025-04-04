@@ -252,7 +252,6 @@
         let lastLogMessage = '';
 
         class TradingAI {
-// Начало функции checkTradeConditions
             checkTradeConditions(price, time, lowerWide, upperWide, lowerNarrow, upperNarrow) {
                 const ema100 = cachedEMA100 || calculateEMA(closePrices, 100);
                 const ema200 = cachedEMA200 || calculateEMA(closePrices, 200);
@@ -323,7 +322,7 @@
 
                 this.updateForecast(bookDiffTrend, marketDiffTrend);
                 updateDataSize();
-            } // Конец checkTradeConditions
+            }
 
             updateSquareColor(bookDiff, marketDiff) {
                 const trendScore = (bookDiff + marketDiff) / 2;
@@ -359,9 +358,7 @@
                 updateTestStats();
                 updateTradeLog();
                 if (document.getElementById('muteSound').checked) testOpenSound.play();
-            }
-
-            updateTakeProfit(time, lowerNarrow, upperNarrow) {
+            }            updateTakeProfit(time, lowerNarrow, upperNarrow) {
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
