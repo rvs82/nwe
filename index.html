@@ -12,7 +12,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body { background-color: #1a1a1a; color: #ffffff; font-family: Arial, sans-serif; margin: 0; padding: 5px 20px 20px; font-weight: 400; line-height: 1.5; }
-        canvas { max-width: 100%; height: 400px; background-color: #000000; border: 1px solid #333; }
+        canvas { max-width: 100%; background-color: #252525; border: 1px solid #333; }
         #tradeAlert { display: none; background-color: #333; border: 2px solid #00ff00; padding: 10px; text-align: center; font-size: 16px; margin-bottom: 10px; }
         #infoBar { text-align: center; font-size: 16px; margin: 10px 0; }
         #tradeInfo { font-size: 14px; margin-top: 5px; }
@@ -1057,9 +1057,9 @@
                 xMax: c.x.getTime() + 1800000,
                 yMin: Math.min(c.o, c.c),
                 yMax: Math.max(c.o, c.c),
-                backgroundColor: 'rgba(0, 0, 0, 0)',
-                borderColor: c.o <= c.c ? '#ffeb3b' : '#ffeb3b',
-                borderWidth: 2
+                backgroundColor: 'rgba(255, 235, 59, 0.8)',
+                borderColor: '#ffeb3b',
+                borderWidth: 1
             })).concat(tradeAnnotations).concat(testTradeAnnotations).concat([{
                 type: 'box',
                 xMin: displayCandles[displayCandles.length - 1].x.getTime() + 1800000,
