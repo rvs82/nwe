@@ -80,7 +80,7 @@
     <script>        const h = 8;
         let mult = 2.89;
         let mult2 = 1.7;
-        const maxCandles = 100; // Увеличено до 100 свечей
+        const maxCandles = 100;
         const maxCalcCandles = 500;
         const tradeSize = 100;
         const commissionRate = 0.0004;
@@ -874,8 +874,6 @@
             });
         }
 
-        initAI();
-
         function updateStats() {
             const totalProfit = tradeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
             const totalLoss = tradeHistory.reduce((sum, trade) => sum + (trade.loss || 0), 0);
@@ -1060,6 +1058,87 @@
             reader.readAsArrayBuffer(file);
         }
 
+        function updateChart() {
+            const displayCandles = candles.slice(-maxCandles);
+            const displayClosePrices = closePrices.slice(-maxCandles);
+            if (displayCandles.length === 0) return;
+            const upperWicks = [];
+            const lowerWicks = [];
+            displayCandles.forEach(c => {
+                const wickColor = c.o <= c.c ? '#ff9800' : '#90bff9';
+                if (c.h > Math.max(c.o, c.c)) {
+                    upperWicks.push({ x: c.x, y: c.h });
+                    upperWicks.push({ x: c.x, y: Math.max(c.o, c.c) });
+                    upperWicks.push({ x: c.x, y: null });
+                }
+                if (c.l < Math.min(c.o, c.c)) {
+                    lowerWicks.push({ x: c.x, y: Math.min(c.o, c.c) });
+                    lowerWicks.push({ x: c.x, y: c.l });
+                    lowerWicks.push({ x: c.x, y: null });
+                }
+            });
+            const { nwe, sae } = cachedNWE || calculateNWE(closePrices, mult);
+            const { nwe: nwe2, sae: sae2 } = cachedNWE2 || calculateNWE(closePrices, mult2);
+            const displayNwe = nwe.slice(-maxCandles);
+            const upper = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae }));
+            const lower = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae }));
+            const middle = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const upper2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v + sae2 }));
+            const lower2 = displayNwe.map((v, i) => ({ x: displayCandles[i]?.x, y: v - sae2 }));
+            const ema100 = cachedEMA100 || calculateEMA(closePrices, 100);
+            const ema200 = cachedEMA200 || calculateEMA(closePrices, 200);
+            const ema100Data = ema100.slice(-maxCandles).map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const ema200Data = ema200.slice(-maxCandles).map((v, i) => ({ x: displayCandles[i]?.x, y: v }));
+            const bidDepth = aiAnalyst.orderBook.bids.reduce((sum, [price, vol]) => sum + parseFloat(price) * parseFloat(vol), 0) / aiAnalyst.orderBook.bids.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0) || 0;
+            const askDepth = aiAnalyst.orderBook.asks.reduce((sum, [price, vol]) => sum + parseFloat(price) * parseFloat(vol), 0) / aiAnalyst.orderBook.asks.reduce((sum, [_, vol]) => sum + parseFloat(vol), 0) || 0;
+            const avgOrderBookPrice = (bidDepth + askDepth) / 2;
+            const annotations = displayCandles.map((c, i) => ({
+                type: 'box',
+                xMin: c.x.getTime() - 1800000,
+                xMax: c.x.getTime() + 1800000,
+                yMin: Math.min(c.o, c.c),
+                yMax: Math.max(c.o, c.c),
+                backgroundColor: 'rgba(0, 0, 0, 0)',
+                borderColor: c.o <= c.c ? '#ff9800' : '#90bff9',
+                borderWidth: 2
+            })).concat(tradeAnnotations).concat(testTradeAnnotations).concat([{
+                type: 'box',
+                xMin: displayCandles[displayCandles.length - 1].x.getTime() + 1800000,
+                xMax: displayCandles[displayCandles.length - 1].x.getTime() + 3600000,
+                yMin: avgOrderBookPrice - 0.001,
+                yMax: avgOrderBookPrice + 0.001,
+                backgroundColor: '#00FF00',
+                borderColor: '#00FF00',
+                borderWidth: 1
+            }]);
+            const lastCandleTime = displayCandles[displayCandles.length - 1].x.getTime();
+            const offsetTime = lastCandleTime + 3600000;
+            const lastPriceData = lastPrice && lastPriceTime ? [{ x: displayCandles[0].x, y: lastPrice }, { x: new Date(lastCandleTime), y: lastPrice }] : [];
+            chart.data.datasets[0].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
+            chart.data.datasets[1].borderColor = displayCandles[displayCandles.length - 1].o <= displayCandles[displayCandles.length - 1].c ? '#ff9800' : '#90bff9';
+            if (lastPrice && lastPriceTime) {
+                const lastLowerWide = lower[lower.length - 1]?.y || 0;
+                const lastUpperWide = upper[upper.length - 1]?.y || 0;
+                const lastLowerNarrow = lower2[lower2.length - 1]?.y || 0;
+                const lastUpperNarrow = upper2[upper2.length - 1]?.y || 0;
+                aiTrader.checkTradeConditions(lastPrice, lastPriceTime, lastLowerWide, lastUpperWide, lastLowerNarrow, lastUpperNarrow);
+            }
+            chart.options.scales.x.min = displayCandles[0].x.getTime();
+            chart.options.scales.x.max = offsetTime;
+            chart.options.plugins.annotation.annotations = annotations;
+            chart.data.datasets[0].data = upperWicks;
+            chart.data.datasets[1].data = lowerWicks;
+            chart.data.datasets[2].data = upper;
+            chart.data.datasets[3].data = lower;
+            chart.data.datasets[4].data = middle;
+            chart.data.datasets[5].data = upper2;
+            chart.data.datasets[6].data = lower2;
+            chart.data.datasets[7].data = ema100Data;
+            chart.data.datasets[8].data = ema200Data;
+            chart.data.datasets[9].data = lastPriceData;
+            chart.update();
+        }
+
         setInterval(() => {
             if (chartBuffer.length > 0) {
                 chartBuffer.forEach(({ timestamp, open, high, low, close, volume }) => {
@@ -1105,6 +1184,7 @@
             return sizeInBytes;
         }
 
+        initAI();
         updateDataSize();
     </script>
 </body>
