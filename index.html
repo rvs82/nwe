@@ -63,9 +63,7 @@
         <button onclick="downloadData()">Скачать данные</button>
         <input type="file" id="uploadData" accept=".zip" onchange="uploadData(event)">
         <button onclick="document.getElementById('uploadData').click()">Загрузить данные</button>
-    </div>
-
-    <script>
+    </div>    <script>
         const h = 8;
         let mult = 2.89;
         let mult2 = 1.7;
@@ -348,17 +346,58 @@
                 const stopLossDistance = profitDistance / riskRewardRatio;
                 const stopLoss = type === 'long' ? price - stopLossDistance : price + stopLossDistance;
 
-                activeTestTrade = { type, openPrice: price, openTime: time, takeProfit, stopLoss, size: tradeSize, startTime: Date.now(), riskRewardRatio };
+                activeTestTrade = { 
+                    type, 
+                    openPrice: price, 
+                    openTime: time, 
+                    takeProfit, 
+                    stopLoss, 
+                    size: tradeSize, 
+                    startTime: Date.now(), 
+                    riskRewardRatio 
+                };
                 const minTime = candles[0]?.x.getTime() || time.getTime() - 60*60*1000;
                 const maxTime = candles[candles.length - 1]?.x.getTime() + 60*60*1000 || time.getTime() + 60*60*1000;
-                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: price, yMax: price, borderColor: '#00BFFF', borderWidth: 2, id: 'testOpenLine', borderDash: [5, 5] });
-                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: takeProfit, yMax: takeProfit, borderColor: '#00BFFF', borderWidth: 2, id: 'testTpLine', borderDash: [5, 5] });
-                testTradeAnnotations.push({ type: 'line', xMin: minTime, xMax: maxTime, yMin: stopLoss, yMax: stopLoss, borderColor: '#FF4040', borderWidth: 2, id: 'testSlLine', borderDash: [5, 5] });
+                testTradeAnnotations.push({ 
+                    type: 'line', 
+                    xMin: minTime, 
+                    xMax: maxTime, 
+                    yMin: price, 
+                    yMax: price, 
+                    borderColor: '#00BFFF', 
+                    borderWidth: 2, 
+                    id: 'testOpenLine', 
+                    borderDash: [5, 5] 
+                });
+                testTradeAnnotations.push({ 
+                    type: 'line', 
+                    xMin: minTime, 
+                    xMax: maxTime, 
+                    yMin: takeProfit, 
+                    yMax: takeProfit, 
+                    borderColor: '#00BFFF', 
+                    borderWidth: 2, 
+                    id: 'testTpLine', 
+                    borderDash: [5, 5] 
+                });
+                testTradeAnnotations.push({ 
+                    type: 'line', 
+                    xMin: minTime, 
+                    xMax: maxTime, 
+                    yMin: stopLoss, 
+                    yMax: stopLoss, 
+                    borderColor: '#FF4040', 
+                    borderWidth: 2, 
+                    id: 'testSlLine', 
+                    borderDash: [5, 5] 
+                });
                 this.updateTestTradeInfo();
                 updateTestStats();
                 updateTradeLog();
                 if (document.getElementById('muteSound').checked) testOpenSound.play();
-            }            updateTakeProfit(time, lowerNarrow, upperNarrow) {
+            }
+
+            updateTakeProfit(time, lowerNarrow, upperNarrow) {
                 const tp = activeTrade.type === 'long' ? upperNarrow : lowerNarrow;
                 activeTrade.takeProfit = tp;
                 const tpAnnotation = tradeAnnotations.find(a => a.id === 'tpLine');
